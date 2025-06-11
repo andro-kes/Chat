@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        window.YaAuthSuggest.init(
+            {
+            client_id: "392d8ee3a05044da81c918ce98837f01",
+            response_type: "token",
+            redirect_uri: "http://localhost:8000/auth"
+            },
+            "http://localhost",
+            { view: "default" }
+        )
+        .then(({handler}) => handler())
+        .then(data => console.log('Сообщение с токеном', data))
+        .catch(error => console.log('Обработка ошибки', error))
+    </script>
+</body>
+</html>

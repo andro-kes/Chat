@@ -65,6 +65,10 @@ func openDB(DSN string) *gorm.DB {
 		log.Fatalf("Ошибка миграции: %v", err)
 		return nil
 	}
+	if err := DB.AutoMigrate(&models.RefreshTokens{}); err != nil {
+		log.Fatalf("Ошибка миграции: %v", err)
+		return nil
+	}
 	log.Println("Успешное подключение к базе данных и миграция выполнены")
 	return DB
 }
