@@ -10,15 +10,10 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 	"gorm.io/gorm"
 )
 
 func GenerateRefreshToken(DB *gorm.DB, userID uint) (string, error) {
-	err := godotenv.Load("../.env")
-	if err != nil {
-		log.Fatal("GenerateAccessToken: Не удалось загрузить env файл")
-	}
 	log.Println("Генерация рефреш токена")
 	expititionTime := time.Now().Add(7 * 24 * time.Hour)
 

@@ -12,23 +12,30 @@ import (
 	"github.com/andro-kes/Chat/shared/models"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 
 var DB *gorm.DB
 
 func init() { 
-    err := godotenv.Load("../shared/middlewares/.env")
-	if err != nil {
-		log.Fatal("Не удалось загрузить configs", err.Error())
+	if os.Getenv("POSTGRES_HOST") == "" {
+		log.Fatal("No Host")
+	}
+	if os.Getenv("POSTGRES_USER") == "" {
+		log.Fatal("No USERNAME")
+	}
+	if os.Getenv("POSTGRES_PASSWORD") == "" {
+		log.Fatal("No PASSWORD")
+	}
+	if os.Getenv("POSTGRES_DB") == "" {
+		log.Fatal("No DB")
 	}
 
 	DSN := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=5432 sslmode=disable",
-		os.Getenv("HOST"),
-		os.Getenv("USERNAME"),
-		os.Getenv("PASSWORD"),
-		os.Getenv("DB_NAME"),
+		os.Getenv("POSTGRES_HOST"),
+		os.Getenv("POSTGRES_USER"),
+		os.Getenv("POSTGRES_PASSWORD"),
+		os.Getenv("POSTGRES_DB"),
 	)
 	
 	DB = openDB(DSN)

@@ -19,3 +19,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    environment:  
+      HOST: ${POSTGRES_HOST} 
+      USERNAME: ${POSTGRES_USER}
+      PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy

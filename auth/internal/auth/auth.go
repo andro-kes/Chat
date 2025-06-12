@@ -14,14 +14,12 @@ import (
 	"github.com/andro-kes/Chat/auth/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	"gorm.io/gorm"
 )
 
 var oauth2Config *oauth2.Config
 
 func init() {
-	godotenv.Load("../.env")
 	oauth2Config = &oauth2.Config{
 		ClientID:     os.Getenv("CLIENT_ID"),
 		ClientSecret: os.Getenv("CLIENT_SECRET"),
