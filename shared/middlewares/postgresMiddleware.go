@@ -18,9 +18,9 @@ import (
 var DB *gorm.DB
 
 func init() { 
-	err := godotenv.Load(".env")
+	err := godotenv.Load("./.env")
 	if err != nil {
-		log.Fatal("Не удалось загрузить configs")
+		log.Fatal("Init DB: Не удалось загрузить configs")
 	}
 
 	DSN := fmt.Sprintf(
