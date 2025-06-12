@@ -41,7 +41,7 @@ var (
 	oauthStateString = "random-string-for-state" // TODO Защита от CSRF
 )
 
-func AuthYandexRedirectHandler(c *gin.Context) {
+func AuthYandexHandler(c *gin.Context) {
 	c.HTML(200, "index.html", nil)
 }
 

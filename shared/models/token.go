@@ -11,6 +11,7 @@ type RefreshTokens struct {
 	Token string `json:"token"`
 }
 
+
 type RefreshTokensClaims struct {
 	UserID uint `json:"user_id"`
 	TokenID uuid.UUID `json:"token_id"`
