@@ -12,6 +12,11 @@ type User struct {
 	Username string
 	Email string
 	Rooms []*Room `gorm:"many2many:room_users"`
+	
+}
+
+type UserData struct {
+	User User
 	Conn *websocket.Conn
 }
 

@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.10
 
 require (
-	github.com/andro-kes/Chat/shared v0.0.0-20250612115720-fe34c5e7a2b9
+	github.com/andro-kes/Chat/shared v0.0.0-20250613081221-cd801ef0c5ed
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-gonic/gin v1.10.1
 	github.com/google/uuid v1.6.0

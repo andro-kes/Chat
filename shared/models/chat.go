@@ -15,26 +15,30 @@ type Room struct {
 	Admin User `gorm:"foreignKey:AdminID"`
 	Users []*User `gorm:"many2many:room_users"`
 	Messages []*Message `gorm:"foreignKey:RoomID"`
+}
+
+type RoomData struct {
+	Room Room
 	Broadcast chan *Message
-	Registered chan *User
-	Unregistered chan *User
+	Registered chan *UserData
+	Unregistered chan *UserData
 	Mu sync.Mutex
 }
 
-func (room *Room) Run() {
+func (room *RoomData) Run() {
 	for {
 		select {
 		case msg := <-room.Broadcast:
 			room.Mu.Lock()
-			msg.Room = room
+			msg.Room = &room.Room
 			DB.Create(msg)
 			msg.Save()
 			room.Mu.Unlock()
 		case user := <-room.Registered:
-			ok := slices.Contains(room.Users, user)
+			ok := slices.Contains(room.Room.Users, &user.User)
 			if !ok {
 				room.Mu.Lock()
-				err := DB.Model(&room).Association("Users").Append(user)
+				err := DB.Model(&room.Room).Association("Users").Append(user.User)
 				if err != nil {
 					log.Println("Models chat error: Не удалось добавить пользователя")
 				}
