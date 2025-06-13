@@ -3,22 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Auth</title>
+    <script src="https://yastatic.net/s3/passport-sdk/autofill/v1/sdk-suggest-with-polyfills-latest.js"></script>
 </head>
 <body>
     <script>
         window.YaAuthSuggest.init(
             {
-            client_id: "392d8ee3a05044da81c918ce98837f01",
+            client_id: "392d8ee3a05044da81c918ce98837f01", // Замените на ваш client_id
             response_type: "token",
-            redirect_uri: "http://localhost:8000/auth"
+            redirect_uri: "http://localhost:8000/auth"   // Замените на ваш redirect_uri
             },
-            "http://localhost",
+            "http://localhost:8000", // Замените на ваш authDomain - важно
             { view: "default" }
         )
-        .then(({handler}) => handler())
-        .then(data => console.log('Сообщение с токеном', data))
-        .catch(error => console.log('Обработка ошибки', error))
+        .then(({handler}) => {
+            // Вызываем handler() чтобы отобразить кнопку
+            handler();
+        })
+        .catch(error => console.error('Ошибка инициализации YaAuthSuggest:', error));
     </script>
 </body>
 </html>
