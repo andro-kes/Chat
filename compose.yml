@@ -35,3 +35,19 @@ services:
         - action: sync
           path: ./auth
           target: /app
+  chat:
+    build:
+      context: ./chat
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:  
+      SECRET_KEY: ${SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./chat
+          target: /app
