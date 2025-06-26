@@ -1,6 +1,8 @@
 package models
 
 import (
+	"sync"
+
 	"gorm.io/gorm"
 
 	"github.com/dgrijalva/jwt-go"
@@ -18,6 +20,7 @@ type User struct {
 type UserData struct {
 	User User
 	Conn *websocket.Conn
+	Mu sync.Mutex
 }
 
 type Claims struct {

@@ -5,7 +5,7 @@ go 1.23
 toolchain go1.23.10
 
 require (
-	github.com/andro-kes/Chat/shared v0.0.0-20250613103654-51c0d956ebd5
+	github.com/andro-kes/Chat/shared v0.0.0-20250618143929-f3245e95bdaf
 	github.com/gin-gonic/gin v1.10.1
 	github.com/gorilla/websocket v1.5.3
 )
@@ -49,3 +49,5 @@ require (
 	gorm.io/driver/postgres v1.6.0 // indirect
 	gorm.io/gorm v1.30.0 // indirect
 )
+
+// replace github.com/andro-kes/Chat/shared => ../shared

@@ -32,6 +32,7 @@ func getCurrentUser(refreshToken string) models.User {
 
 func IsAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Лучше использовать access
 		refreshToken, err := c.Cookie("refresh_token")
 		if err != nil {
 			log.Println("IsAuthMiddleware: не найден реферш токен в куках пользователя")
