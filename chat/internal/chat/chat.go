@@ -25,20 +25,35 @@ var Manager = RoomManager{
 }
 
 func MainPageHandler(c *gin.Context) {
-	currentUser := getCurrentUser(c)
-	if currentUser.ID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"Error": "Пользователь не авторизован"})
-		return
-	}
-
-	data := make(map[uint]string)
-	for _, room := range currentUser.Rooms {
-		data[room.ID] = room.Name
-	}
-
-	c.HTML(200, "main.html", data)
+	user := getCurrentUser(c)
+	log.Println("Вход на главную страницу", user.Username)
+	c.HTML(200, "main.html", gin.H{
+		"UserName": user.Username,
+	})
 }
 
+func GetUserRooms(c *gin.Context) {
+	currentUser := getCurrentUser(c)
+    
+    var rooms []models.Room
+    err := middlewares.DB.Model(&currentUser).
+        Preload("Users").
+        Preload("Admin").
+        Association("Rooms").
+        Find(&rooms)
+        
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка загрузки комнат"})
+        return
+    }
+
+    data := make(map[uint]string)
+    for _, room := range rooms {
+        data[room.ID] = room.Name
+    }
+
+    c.JSON(200, data)
+}
 
 func ChatPageHandler(c *gin.Context) {
 	id := c.Param("id")
@@ -55,13 +70,15 @@ func ChatPageHandler(c *gin.Context) {
 	}
 
 	currentUser := getCurrentUser(c)
-	if !currentRoom.CheckAccess(&currentUser) {
-		c.JSON(404, gin.H{"Error": "Доступ запрещен"})
+	if !CheckAccess(&currentRoom, &currentUser) {
+		c.JSON(404, gin.H{
+			"ChatPageHandler": "Доступ запрещен",
+			"User": currentUser.Username,
+		})
 		return
 	}
 
-	var activeRoom *models.RoomData
-	if room, ok := Manager.ActiveRooms[uint(roomID)]; !ok {
+	if _, ok := Manager.ActiveRooms[uint(roomID)]; !ok {
 		newRoom := &models.RoomData{
 			Room: currentRoom,
 			ActiveUsers: make(map[*models.UserData]bool),
@@ -71,25 +88,27 @@ func ChatPageHandler(c *gin.Context) {
 			Close: make(chan bool),
 			TaskQueue: make(chan models.MessageTask, 1000),
 		}
-		activeRoom = newRoom
 		Manager.AddRoom(newRoom)
 
 		go newRoom.Run()
-	} else {
-		activeRoom = room
 	}
-	
-	data := GetMessages(activeRoom.Room.ID)
 
-	c.HTML(200, "chat.html", data)
+	c.HTML(200, "chat.html", nil)
 }
 
-func GetMessages(roomID uint) []models.Message {
+func GetRoomMessages(c *gin.Context) {
 	var messages []models.Message
-	middlewares.DB.Where("room_id = ?", roomID).
+	obj := middlewares.DB.Where("room_id = ?", c.Param("id")).
+		Preload("Sender").
 		Order("created_at desc").
 		Find(&messages)
-	return messages
+
+	if obj.Error != nil {
+		c.JSON(200, "Сообщений нет")
+		return
+	}
+	
+	c.JSON(200, messages)
 }
 
 func ChatHandler(c *gin.Context) {
@@ -99,6 +118,7 @@ func ChatHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"Error": "Не удалось установить соединение с сокетом"})
 		return
 	}
+	log.Println("Соединение установлено")
 
 	id := c.Param("id")
 	roomID, err := strconv.ParseUint(id, 10, 64)
@@ -131,6 +151,7 @@ func ChatHandler(c *gin.Context) {
 	currentRoom.Registered <- currentUserData
 
 	defer func() {
+		log.Println("Соединение разорвано")
 		currentRoom.Unregistered <- currentUserData
 		if !currentRoom.CheckActive() {
 			Manager.Mu.Lock()

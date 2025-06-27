@@ -143,22 +143,35 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const roomId = window.location.pathname.split('/')[1];
+            // Получаем ID комнаты из URL
+            const pathSegments = window.location.pathname.split('/');
+            const roomId = pathSegments[1];
             document.getElementById('roomTitle').textContent = `Комната ${roomId}`;
             
-            // Load previous messages
+            // Загрузка предыдущих сообщений
             fetchMessages(roomId);
             
-            // WebSocket connection
-            const socket = new WebSocket(`ws://${window.location.host}/${roomId}/ws`);
+            // WebSocket соединение
+            let socket;
+            try {
+                socket = new WebSocket(`ws://${window.location.host}/${roomId}/ws`);
+            } catch (error) {
+                console.error('WebSocket error:', error);
+                showError('Не удалось подключиться к чату');
+                return;
+            }
             
             socket.onopen = function(e) {
                 console.log("WebSocket connection established");
             };
             
             socket.onmessage = function(event) {
-                const message = JSON.parse(event.data);
-                addMessageToChat(message);
+                try {
+                    const message = JSON.parse(event.data);
+                    addMessageToChat(message);
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                }
             };
             
             socket.onclose = function(event) {
@@ -166,14 +179,16 @@
                     console.log(`Connection closed cleanly, code=${event.code}, reason=${event.reason}`);
                 } else {
                     console.log('Connection died');
+                    showError('Соединение с сервером потеряно. Пожалуйста, обновите страницу.');
                 }
             };
             
             socket.onerror = function(error) {
-                console.log(`WebSocket error: ${error.message}`);
+                console.log('WebSocket error:', error);
+                showError('Ошибка соединения с сервером');
             };
             
-            // Send message
+            // Отправка сообщения
             const sendBtn = document.getElementById('sendBtn');
             const messageInput = document.getElementById('messageInput');
             
@@ -186,59 +201,107 @@
             
             function sendMessage() {
                 const text = messageInput.value.trim();
-                if (text) {
+                if (!text) return;
+                
+                if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    showError('Соединение не установлено. Не удается отправить сообщение.');
+                    return;
+                }
+                
+                try {
                     const message = {
                         text: text
                     };
                     socket.send(JSON.stringify(message));
                     messageInput.value = '';
+                } catch (error) {
+                    console.error('Error sending message:', error);
+                    showError('Ошибка при отправке сообщения');
                 }
             }
             
-            // Back button
+            // Кнопка "Назад"
             document.getElementById('backBtn').addEventListener('click', function() {
                 window.location.href = '/';
             });
-        });
-        
-        async function fetchMessages(roomId) {
-            try {
-                const response = await fetch(`/${roomId}`);
-                if (response.ok) {
+            
+            // Функция для загрузки сообщений
+            async function fetchMessages(roomId) {
+                try {
+                    const response = await fetch(`/api/room/${roomId}/messages`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        throw new TypeError('Response is not JSON');
+                    }
+                    
                     const messages = await response.json();
                     renderMessages(messages);
+                } catch (error) {
+                    console.error('Error fetching messages:', error);
+                    showError('Ошибка загрузки сообщений');
                 }
-            } catch (error) {
-                console.error('Error fetching messages:', error);
             }
-        }
-        
-        function renderMessages(messages) {
-            const container = document.getElementById('messagesContainer');
-            container.innerHTML = '';
             
-            messages.forEach(message => {
-                addMessageToChat(message);
-            });
-        }
-        
-        function addMessageToChat(message) {
-            const container = document.getElementById('messagesContainer');
-            const messageElement = document.createElement('div');
-            messageElement.className = 'message';
+            // Функция для отображения сообщений
+            function renderMessages(messages) {
+                const container = document.getElementById('messagesContainer');
+                container.innerHTML = '';
+                
+                // Сортируем сообщения по времени (от старых к новым)
+                messages.sort((a, b) => new Date(a.CreatedAt) - new Date(b.CreatedAt));
+                
+                messages.forEach(message => {
+                    addMessageToChat(message);
+                });
+                
+                // Прокручиваем вниз
+                container.scrollTop = container.scrollHeight;
+            }
             
-            const date = new Date(message.CreatedAt);
-            const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            // Функция для добавления сообщения в чат
+            function addMessageToChat(message) {
+                const container = document.getElementById('messagesContainer');
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message';
+                
+                const date = new Date(message.CreatedAt);
+                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                // Проверяем наличие информации об отправителе
+                const senderName = message.Sender?.Username || message.SenderID || 'Аноним';
+                
+                messageElement.innerHTML = `
+                    <div class="message-sender">${senderName}</div>
+                    <p class="message-text">${message.Text}</p>
+                    <div class="message-time">${timeString}</div>
+                `;
+                
+                container.appendChild(messageElement);
+                
+                // Прокручиваем вниз
+                container.scrollTop = container.scrollHeight;
+            }
             
-            messageElement.innerHTML = `
-                <div class="message-sender">${message.Sender?.Username || 'Аноним'}</div>
-                <p class="message-text">${message.Text}</p>
-                <div class="message-time">${timeString}</div>
-            `;
-            
-            container.appendChild(messageElement);
-            container.scrollTop = container.scrollHeight;
-        }
+            // Функция для отображения ошибок
+            function showError(message) {
+                const container = document.getElementById('messagesContainer');
+                if (!container) return;
+                
+                const errorElement = document.createElement('div');
+                errorElement.className = 'error-message';
+                errorElement.style.color = 'red';
+                errorElement.style.padding = '10px';
+                errorElement.style.textAlign = 'center';
+                errorElement.textContent = message;
+                
+                container.appendChild(errorElement);
+            }
+        });
     </script>
 </body>
 </html>

@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const WORKERS_COUNT = 20
+const WORKERS_COUNT = 5
 
 type Room struct {
 	gorm.Model
@@ -17,15 +17,6 @@ type Room struct {
 	Admin User `gorm:"foreignKey:AdminID"`
 	Users []*User `gorm:"many2many:room_users"`
 	Messages []*Message `gorm:"foreignKey:RoomID"`
-}
-
-func (room *Room) CheckAccess(user *User) bool {
-	for _, u := range room.Users {
-		if u.ID == user.ID {
-			return true
-		}
-	}
-	return false
 }
 
 type RoomData struct {
@@ -105,22 +96,29 @@ func (room *RoomData) worker() {
             log.Printf("Worker восстановлен: %v", r)
         }
     }()
-
-	for task := range room.TaskQueue {
-		task.User.Mu.Lock()
-		err := task.User.Conn.WriteJSON(task.Msg)
-		task.User.Mu.Unlock()
-		if err != nil {
-			select {
-			case task.Room.Unregistered <- task.User:
-				log.Println("SendMessage: Не удалось отправить сообщение пользователю", task.User.User.Username)
-				log.Println("=> Отключение")
-			case <-room.StopWorkers:
+	for {
+		select {
+		case task, ok := <- room.TaskQueue: 
+			if !ok {
 				return
-			default:
-				log.Println("Очередь переполнена")
 			}
-		}	
+			
+			task.User.Mu.Lock()
+			err := task.User.Conn.WriteJSON(task.Msg)
+			task.User.Mu.Unlock()
+			if err != nil {
+				select {
+				case task.Room.Unregistered <- task.User:
+					log.Println("SendMessage: Не удалось отправить сообщение пользователю", task.User.User.Username)
+					log.Println("=> Отключение из-за", err.Error())
+				default:
+					log.Println("Очередь переполнена")
+				}	
+			}
+			
+		case <-room.StopWorkers:
+			return
+		}
 	}
 }
 

@@ -14,8 +14,10 @@ func main() {
 	router.LoadHTMLGlob("/app/web/templates/*")
 
 	router.GET("/", chat.MainPageHandler)
+	router.GET("/api/rooms", chat.GetUserRooms)
 	router.GET("/:id", chat.ChatPageHandler)
-	router.GET("/:id/ws")
+	router.GET("/api/room/:id/messages", chat.GetRoomMessages)
+	router.GET("/:id/ws", chat.ChatHandler)
 	router.POST("/create_room", chat.CreateRoom)
 
 	router.Run(":8080")
