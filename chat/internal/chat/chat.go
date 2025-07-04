@@ -81,7 +81,7 @@ func ChatPageHandler(c *gin.Context) {
 	if _, ok := Manager.ActiveRooms[uint(roomID)]; !ok {
 		newRoom := &models.RoomData{
 			Room: currentRoom,
-			ActiveUsers: make(map[*models.UserData]bool),
+			ActiveUsers: make(map[uint]*models.UserData),
 			Broadcast: make(chan *models.Message, 100),
 			Registered: make(chan *models.UserData, 100),
 			Unregistered: make(chan *models.UserData, 100),

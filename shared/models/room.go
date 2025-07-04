@@ -21,7 +21,7 @@ type Room struct {
 
 type RoomData struct {
 	Room Room
-	ActiveUsers map[*UserData]bool
+	ActiveUsers map[uint]*UserData
 	Broadcast chan *Message
 	Registered chan *UserData
 	Unregistered chan *UserData
@@ -48,13 +48,18 @@ func (room *RoomData) Run() {
 			room.SendMessage(msg)
 			room.Mu.RUnlock()
 		case user := <-room.Registered:
-			if _, ok := room.ActiveUsers[user]; !ok {
-				room.ActiveUsers[user] = true
+			room.Mu.Lock()
+			if existingUser, ok := room.ActiveUsers[user.User.ID]; ok {
+				existingUser.Conn.Close()
 			}
+			room.ActiveUsers[user.User.ID] = user
+			room.Mu.Unlock()
 		case user := <-room.Unregistered:
-			user.Conn.Close()
+			if user.Conn != nil {
+				user.Conn.Close()
+			}
 			room.Mu.RLock()
-			delete(room.ActiveUsers, user)
+			delete(room.ActiveUsers, user.User.ID)
 			room.Mu.RUnlock()
 		case <-room.Close:
 			room.StopWorkers <- true
@@ -71,7 +76,7 @@ func (room *RoomData) CheckActive() bool {
 }
 
 func (room *RoomData) SendMessage(msg *Message) {
-	for user := range room.ActiveUsers {
+	for _, user := range room.ActiveUsers {
 		select{
 			case room.TaskQueue <- MessageTask{
 				User: user,
