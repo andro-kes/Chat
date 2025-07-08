@@ -19,6 +19,7 @@ func main() {
 	router.GET("/api/room/:id/messages", chat.GetRoomMessages)
 	router.GET("/:id/ws", chat.ChatHandler)
 	router.POST("/create_room", chat.CreateRoom)
+	router.POST("/api/:id/add_user", chat.AddUserToRoom)
 
 	router.Run(":8080")
 }

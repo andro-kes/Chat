@@ -11,7 +11,7 @@ type IDUser struct {
 }
 
 func AddUserToRoom(c *gin.Context) {
-	id := c.Param("id_room")
+	id := c.Param("id")
 	currentRoom, err := getCurrentRoom(id)
 	if err != nil {
 		c.JSON(400, gin.H{"AddUserToRoom": "Не удалось получить доступ к комнате", "id_room": id})

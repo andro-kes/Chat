@@ -2,15 +2,23 @@ package chat
 
 import (
 	"log"
+	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/andro-kes/Chat/shared/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 func ChatHandler(c *gin.Context) {
+	upgrader := websocket.Upgrader{
+		CheckOrigin:     func(r *http.Request) bool { return true },
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		c.JSON(400, gin.H{
@@ -69,10 +77,12 @@ func ChatHandler(c *gin.Context) {
 		}
 	}()
 
-	for {
-		conn.SetReadLimit(1024)
-		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	conn.SetPingHandler(func(string) error {
+        conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+        return conn.WriteControl(websocket.PongMessage, nil, time.Now().Add(5*time.Second))
+    })
 
+	for {
 		err := conn.ReadJSON(&message)
 		if err != nil {
 			log.Println("Ошибка считывания сообщения", err.Error())

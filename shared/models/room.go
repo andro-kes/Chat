@@ -3,6 +3,7 @@ package models
 import (
 	"log"
 	"sync"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -109,6 +110,7 @@ func (roomData *RoomData) CompleteTask(task MessageTask) {
 	task.User.Mu.Lock()
 	defer task.User.Mu.Unlock()
 
+	task.User.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	err := task.User.Conn.WriteJSON(task.Msg)
 	if err != nil {
 		log.Println("Ошибка при получении сообщения:", err.Error())
