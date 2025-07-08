@@ -16,7 +16,7 @@ func (roomManager *RoomManager) AddRoom(roomData *models.RoomData) {
 	roomManager.ActiveRooms[roomData.Room.ID] = roomData
 }
 
-func (roomManager *RoomManager) Delete(roomData *models.RoomData) {
+func (roomManager *RoomManager) DeleteRoom(roomData *models.RoomData) {
 	roomManager.Mu.Lock()
 	defer roomManager.Mu.Unlock()
 	delete(roomManager.ActiveRooms, roomData.Room.ID)

@@ -22,6 +22,16 @@ type UserData struct {
 	Mu sync.Mutex
 }
 
+func (userData *UserData) CloseConn() {
+	userData.Mu.Lock()
+	defer userData.Mu.Unlock()
+	
+	if userData.Conn != nil {
+		userData.Conn.Close()
+		userData.Conn = nil
+	}
+}
+
 type Claims struct {
 	jwt.StandardClaims
 }

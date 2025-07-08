@@ -3,12 +3,9 @@ package models
 import (
 	"log"
 	"sync"
-	"time"
 
 	"gorm.io/gorm"
 )
-
-const WORKERS_COUNT = 5
 
 type Room struct {
 	gorm.Model
@@ -22,50 +19,51 @@ type Room struct {
 type RoomData struct {
 	Room Room
 	ActiveUsers map[uint]*UserData
-	Broadcast chan *Message
-	Registered chan *UserData
-	Unregistered chan *UserData
 	TaskQueue chan MessageTask
-	Close chan bool
-	StopWorkers chan bool
+	StopWorkers chan struct{}
 	Mu sync.RWMutex
+	Wg sync.WaitGroup
 }
 
 type MessageTask struct {
 	User *UserData
 	Msg *Message
-	Room *RoomData
 }
 
-func (room *RoomData) Run() {
-	room.StopWorkers = make(chan bool)
-	room.StartWork(WORKERS_COUNT)
-	for {
-		select {
-		case msg := <-room.Broadcast:
-			room.Mu.RLock()
-			msg.Save()
-			room.SendMessage(msg)
-			room.Mu.RUnlock()
-		case user := <-room.Registered:
-			room.Mu.Lock()
-			if existingUser, ok := room.ActiveUsers[user.User.ID]; ok {
-				existingUser.Conn.Close()
-			}
-			room.ActiveUsers[user.User.ID] = user
-			room.Mu.Unlock()
-		case user := <-room.Unregistered:
-			if user.Conn != nil {
-				user.Conn.Close()
-			}
-			room.Mu.RLock()
-			delete(room.ActiveUsers, user.User.ID)
-			room.Mu.RUnlock()
-		case <-room.Close:
-			room.StopWorkers <- true
-			return
+func (roomData *RoomData) SendMessage (msg *Message) {
+	roomData.Mu.RLock()
+	msg.Save()
+	roomData.Mu.RUnlock()
+
+	for _, user := range roomData.ActiveUsers {
+		select{
+			case roomData.TaskQueue <- MessageTask{
+				User: user,
+				Msg: msg,
+			}:
+			default:
+				log.Println("Очередь сообщений переполнена")
 		}
 	}
+}
+
+func (roomData *RoomData) Registered (user *UserData) {
+	roomData.Mu.Lock()
+	defer roomData.Mu.Unlock()
+
+	if activeUser, ok := roomData.ActiveUsers[user.User.ID]; ok {
+		activeUser.CloseConn()
+	}
+
+	roomData.ActiveUsers[user.User.ID] = user
+}
+
+func (roomData *RoomData) Unregistered (user *UserData) {
+	roomData.Mu.Lock()
+	defer roomData.Mu.Unlock()
+
+	user.CloseConn()
+	delete(roomData.ActiveUsers, user.User.ID)
 }
 
 func (room *RoomData) CheckActive() bool {
@@ -75,71 +73,67 @@ func (room *RoomData) CheckActive() bool {
 	return len(room.ActiveUsers) > 0
 }
 
-func (room *RoomData) SendMessage(msg *Message) {
-	for _, user := range room.ActiveUsers {
-		select{
-			case room.TaskQueue <- MessageTask{
-				User: user,
-				Msg: msg,
-				Room: room,
-			}:
-			default:
-				log.Println("Очередь сообщений переполнена")
-		}
+func (roomData *RoomData) StartWork(n int) {
+	roomData.StopWorkers = make(chan struct{})
+	roomData.TaskQueue = make(chan MessageTask, 1000)
+
+	for range n {
+		roomData.Wg.Add(1)
+		go roomData.worker()
 	}
 }
 
-func (room *RoomData) StartWork(n int) {
-	for range n{
-		go room.worker()
-	}
-}
-
-func (room *RoomData) worker() {
+func (roomData *RoomData) worker() {
 	defer func() {
+		roomData.Wg.Done()
         if r := recover(); r != nil {
             log.Printf("Worker восстановлен: %v", r)
         }
     }()
+
 	for {
 		select {
-		case task, ok := <- room.TaskQueue: 
+		case task, ok := <-roomData.TaskQueue:
 			if !ok {
 				return
 			}
+			roomData.CompleteTask(task)
 			
-			task.User.Mu.Lock()
-			err := task.User.Conn.WriteJSON(task.Msg)
-			task.User.Mu.Unlock()
-			if err != nil {
-				select {
-				case task.Room.Unregistered <- task.User:
-					log.Println("SendMessage: Не удалось отправить сообщение пользователю", task.User.User.Username)
-					log.Println("=> Отключение из-за", err.Error())
-				default:
-					log.Println("Очередь переполнена")
-				}	
-			}
-			
-		case <-room.StopWorkers:
+		case <-roomData.StopWorkers:
 			return
 		}
 	}
 }
 
-func (room *RoomData) Stop() {
-	close(room.TaskQueue)
-	time.Sleep(100 * time.Millisecond)
+func (roomData *RoomData) CompleteTask(task MessageTask) {
+	task.User.Mu.Lock()
+	defer task.User.Mu.Unlock()
 
-	room.Close <- true
-	SafeChanClose(room.Close)
-	SafeChanClose(room.Registered)
-	close(room.Unregistered)
-	close(room.Broadcast)
-	close(room.StopWorkers)
+	err := task.User.Conn.WriteJSON(task.Msg)
+	if err != nil {
+		log.Println("Ошибка при получении сообщения:", err.Error())
+		roomData.Unregistered(task.User)
+	}
 }
 
-func SafeChanClose[T any](ch chan T) {
+func (roomData *RoomData) Stop() {
+	roomData.Mu.Lock()
+	defer roomData.Mu.Unlock()
+
+	close(roomData.StopWorkers)
+
+	for _, user := range roomData.ActiveUsers {
+		user.CloseConn()
+	}
+	roomData.ActiveUsers = make(map[uint]*UserData)
+
+	go func() {
+		roomData.Wg.Wait()
+		safeChanClose(roomData.TaskQueue)
+	}()
+}
+
+func safeChanClose[T any](ch chan T) {
 	defer func() { recover() }()
     close(ch)
 }
