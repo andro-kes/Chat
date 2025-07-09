@@ -13,6 +13,7 @@ type User struct {
 	gorm.Model
 	Username string
 	Email string
+	Password string `json:"password"`
 	Rooms []*Room `gorm:"many2many:room_users"`
 }
 

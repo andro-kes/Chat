@@ -25,6 +25,7 @@ func main() {
 
 	router.GET("/", auth.AuthYandexHandler)
 	router.GET("/auth", auth.LoginYandexHandler)
+	router.GET("")
 
 	router.Run(":8000")
 }
