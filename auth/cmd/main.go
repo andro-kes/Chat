@@ -23,9 +23,18 @@ func main() {
 	router.Use(middlewares.DBMiddleWare())
 	router.LoadHTMLGlob("/app/web/templates/*")
 
-	router.GET("/", auth.AuthYandexHandler)
+	router.GET("/yandex_auth", auth.AuthYandexHandler)
 	router.GET("/auth", auth.LoginYandexHandler)
-	router.GET("")
+
+	router.GET("/", auth.LoginPageHandler)
+	router.POST("/api/login", auth.Login)
+	
+	router.GET("/signup_page", auth.SignUPPageHandler)
+	router.POST("/api/signup", auth.SignUp)
+
+	router.POST("/logout", auth.LogoutHandler)
+
+	router.PATCH("/api/update", auth.UpdateUser)
 
 	router.Run(":8000")
 }

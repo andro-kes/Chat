@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func signUPPageHandler(c *gin.Context) {
+func SignUPPageHandler(c *gin.Context) {
 	c.HTML(200, "signUp.html", nil)
 }
 

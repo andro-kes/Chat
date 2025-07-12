@@ -136,6 +136,7 @@ func LoginYandexHandler(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "auth.html", gin.H{
 		"message": "Успешная авторизация через Яндекс",
+		"username": yandexUser.Login,
 		"email":   yandexUser.DefaultEmail,
 	})
 }

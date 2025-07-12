@@ -145,7 +145,7 @@
         </form>
 
         <div class="auth-footer">
-            Нет аккаунта? <a href="/signup" class="auth-link">Зарегистрируйтесь</a>
+            Нет аккаунта? <a href="/signup_page" class="auth-link">Зарегистрируйтесь</a>
         </div>
     </div>
 
@@ -157,7 +157,7 @@
             const password = document.getElementById('password').value;
             
             try {
-                const response = await fetch('/login', {
+                const response = await fetch('/api/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

@@ -1,5 +1,5 @@
-github.com/andro-kes/Chat/shared v0.0.0-20250613084326-ab626deee88f h1:ohFJQd8m4y9qI9G2Fk9BwVwMEBd0vhiANIZzMLtAwrQ=
-github.com/andro-kes/Chat/shared v0.0.0-20250613084326-ab626deee88f/go.mod h1:sybvzOg9gSpDgZH4J8lzT8vCTmm2lQv6Zql6Fd2jIYs=
+github.com/andro-kes/Chat/shared v0.0.0-20250709154357-33b2fec3eb59 h1:2WOQB+eaETDn39Rrt1VoB4n4po6tBbOK2K6JgYN44B0=
+github.com/andro-kes/Chat/shared v0.0.0-20250709154357-33b2fec3eb59/go.mod h1:sybvzOg9gSpDgZH4J8lzT8vCTmm2lQv6Zql6Fd2jIYs=
 github.com/bytedance/sonic v1.13.3 h1:MS8gmaH16Gtirygw7jV91pDCN33NyMrPbN7qiYhEsF0=
 github.com/bytedance/sonic v1.13.3/go.mod h1:o68xyaF9u2gvVBuGHPlUVCy+ZfmNNO5ETf1+KgkJhz4=
 github.com/bytedance/sonic/loader v0.1.1/go.mod h1:ncP89zfokxS5LZrJxl5z0UJcsk4M4yY2JpfqGeCtNLU=
