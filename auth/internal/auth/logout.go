@@ -4,13 +4,12 @@ import (
 	"log"
 
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/middlewares"
 	"github.com/andro-kes/Chat/shared/models"
 	"github.com/gin-gonic/gin"
 )
 
 func LogoutHandler(c *gin.Context) {
-	DB := middlewares.DB
+	DB := utils.GetDB(c)
 
 	token, err := c.Cookie("refresh_token")
 	if err != nil {

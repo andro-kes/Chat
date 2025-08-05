@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/middlewares"
 	"github.com/andro-kes/Chat/shared/models"
 	"github.com/gin-gonic/gin"
 )
@@ -15,7 +14,7 @@ func SignUPPageHandler(c *gin.Context) {
 	c.HTML(200, "signUp.html", nil)
 }
 
-func SignUp(c *gin.Context) {
+func SignUpHandler(c *gin.Context) {
 	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {
 		log.Println("Не удалось зарегистрировать пользователя")
@@ -25,7 +24,7 @@ func SignUp(c *gin.Context) {
 		})
 	}
 
-	DB := middlewares.DB
+	DB := utils.GetDB(c)
 
 	var existingUser models.User
 	DB.Where("email = ?", user.Email).First(&existingUser)

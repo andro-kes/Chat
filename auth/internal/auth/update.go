@@ -2,7 +2,6 @@ package auth
 
 import (
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/middlewares"
 	"github.com/andro-kes/Chat/shared/models"
 	"github.com/gin-gonic/gin"
 )
@@ -17,8 +16,10 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
+	DB := utils.GetDB(c)
+
 	var existingUser models.User
-	obj := middlewares.DB.Where("email = ?", user.Email).First(&existingUser)
+	obj := DB.Where("email = ?", user.Email).First(&existingUser)
 	if obj.Error != nil {
 		c.JSON(400, gin.H{
 			"message": "Пользователь не найден",
@@ -39,7 +40,7 @@ func UpdateUser(c *gin.Context) {
 	}
 	existingUser.Password = string(password)
 
-	obj = middlewares.DB.Save(&existingUser)
+	obj = DB.Save(&existingUser)
 	if obj.Error != nil {
 		c.JSON(400, gin.H{
 			"message": "Не удалось сохранить изменения",

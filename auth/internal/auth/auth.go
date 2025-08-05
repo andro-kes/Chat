@@ -15,12 +15,11 @@ import (
 	"github.com/andro-kes/Chat/auth/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 var oauth2Config *oauth2.Config
 
-func init() {
+func initData() {
 	oauth2Config = &oauth2.Config{
 		ClientID:     os.Getenv("CLIENT_ID"),
 		ClientSecret: os.Getenv("CLIENT_SECRET"),
@@ -45,12 +44,14 @@ var (
 )
 
 func AuthYandexHandler(c *gin.Context) {
+	initData()
 	url := oauth2Config.AuthCodeURL(oauthStateString)
 	log.Println("Перенаправляю на: ", url)
 	c.Redirect(http.StatusTemporaryRedirect, url) 
 }
 
 func LoginYandexHandler(c *gin.Context) {
+	initData()
 	log.Println("LoginYandexHandler запущен") 
 
 	state := c.Query("state")
@@ -94,16 +95,7 @@ func LoginYandexHandler(c *gin.Context) {
 		return
 	}
 
-	db, ok := c.Get("DB")
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": "Нет связи с базой данных"})
-		return
-	}
-	DB, ok := db.(*gorm.DB)
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": "Неверный формат DB"})
-		return
-	}
+	DB := utils.GetDB(c)
 
 	var existingUser models.User
 	DB.Where("email = ?", yandexUser.DefaultEmail).First(&existingUser)

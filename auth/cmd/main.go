@@ -27,10 +27,10 @@ func main() {
 	router.GET("/auth", auth.LoginYandexHandler)
 
 	router.GET("/", auth.LoginPageHandler)
-	router.POST("/api/login", auth.Login)
+	router.POST("/api/login", auth.LoginHandler)
 	
 	router.GET("/signup_page", auth.SignUPPageHandler)
-	router.POST("/api/signup", auth.SignUp)
+	router.POST("/api/signup", auth.SignUpHandler)
 
 	router.POST("/logout", auth.LogoutHandler)
 

@@ -1,11 +1,11 @@
 package auth
 
 import (
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/middlewares"
 	"github.com/andro-kes/Chat/shared/models"
 	"github.com/gin-gonic/gin"
 )
@@ -14,18 +14,22 @@ func LoginPageHandler(c *gin.Context) {
 	c.HTML(200, "login.html", nil)
 }
 
-func Login(c *gin.Context) {
+func LoginHandler(c *gin.Context) {
 	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(400, gin.H{
 			"message": "Невалидные данные",
 			"error": err.Error(),
 		})
+		return
 	}
 
+	DB := utils.GetDB(c)
+
 	var existingUser models.User
-	obj := middlewares.DB.Where("email = ?", user.Email).First(&existingUser)
+	obj := DB.Where("email = ?", user.Email).First(&existingUser)
 	if obj.Error != nil {
+		log.Println("Пользователь не найден")
 		c.JSON(400, gin.H{
 			"message": "Пользователь не найден",
 			"error": obj.Error.Error(),
@@ -35,6 +39,7 @@ func Login(c *gin.Context) {
 
 	err := utils.CompareHashPasswords(user.Password, existingUser.Password)
 	if err != nil {
+		log.Println("Пароли не совпадают")
 		c.JSON(400, gin.H{
 			"message": "Пароли не совпадают",
 			"error": err.Error(),
@@ -42,7 +47,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	refreshToken, err := utils.GenerateRefreshToken(middlewares.DB, existingUser.ID)
+	refreshToken, err := utils.GenerateRefreshToken(DB, existingUser.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
