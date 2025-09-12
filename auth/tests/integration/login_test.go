@@ -3,10 +3,9 @@ package auth_tests
 import (
 	"bytes"
 
-	"github.com/andro-kes/Chat/auth/internal/auth"
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/models"
-	"github.com/gin-gonic/gin"
+
+
 	"github.com/stretchr/testify/assert"
 
 	"encoding/json"

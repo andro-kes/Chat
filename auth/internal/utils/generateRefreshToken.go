@@ -6,11 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/andro-kes/Chat/shared/models"
-
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 func GenerateRefreshToken(DB *gorm.DB, userID uint) (string, error) {

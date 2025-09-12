@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"os"
 
-	"github.com/andro-kes/Chat/shared/models"
-
 	"github.com/dgrijalva/jwt-go"
 )
 

@@ -4,7 +4,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func CompareHashPasswords(userPassword, existingPassword string) error {
+// Сравнивает hash пароль с введенным
+func CompareHashPasswords(existingPassword, userPassword string) error {
 	err :=  bcrypt.CompareHashAndPassword([]byte(existingPassword), []byte(userPassword))
 	return err
 }

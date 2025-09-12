@@ -1,33 +1,24 @@
 package main
 
 import (
-	"log"
-	
-	"github.com/andro-kes/Chat/auth/internal/auth"
-	"github.com/andro-kes/Chat/shared/middlewares"
+	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/andro-kes/Chat/auth/logger"
+	"github.com/andro-kes/Chat/auth/internal/handlers"
 )
 
 func main() {
-	defer func() {
-		sqlDB, err := middlewares.DB.DB()
-		if err != nil {
-			log.Fatalln("Ошибка при попытке закрыть базу данных: %м", err)
-		}
-		sqlDB.Close()
-		log.Println("Соединение с базой данных разорвано")
-	} ()
+	logger.Init()
 
-	router := gin.Default()
-	router.Use(middlewares.DBMiddleWare())
-	router.LoadHTMLGlob("/app/web/templates/*")
+	defer logger.Close()
 
-	router.GET("/yandex_auth", auth.AuthYandexHandler)
+	
+
+	http.HandleFunc("/yandex_auth", handlers.AuthYandexHandler)
 	router.GET("/auth", auth.LoginYandexHandler)
 
 	router.GET("/", auth.LoginPageHandler)
-	router.POST("/api/login", auth.LoginHandler)
+	http.HandleFunc("/api/login", auth.LoginHandler)
 	
 	router.GET("/signup_page", auth.SignUPPageHandler)
 	router.POST("/api/signup", auth.SignUpHandler)

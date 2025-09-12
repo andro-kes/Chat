@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"gorm.io/gorm"
+
 )
 
 var testDB *gorm.DB

@@ -7,10 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/andro-kes/Chat/auth/internal/auth"
+	
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/models"
-	"github.com/gin-gonic/gin"
+
 	"github.com/stretchr/testify/assert"
 )
 

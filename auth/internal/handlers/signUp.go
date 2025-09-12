@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/models"
-	"github.com/gin-gonic/gin"
 )
 
 func SignUPPageHandler(c *gin.Context) {

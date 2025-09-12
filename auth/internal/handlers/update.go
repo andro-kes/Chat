@@ -2,8 +2,6 @@ package auth
 
 import (
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/models"
-	"github.com/gin-gonic/gin"
 )
 
 func UpdateUser(c *gin.Context) {

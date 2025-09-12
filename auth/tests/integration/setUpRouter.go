@@ -4,11 +4,11 @@ import (
 	"log"
 
 	"github.com/andro-kes/Chat/auth/internal/utils"
-	"github.com/andro-kes/Chat/shared/models"
+	
 
-	"github.com/gin-gonic/gin"
+
 	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
+
 )
 
 func SetUpTestRouter() *gin.Engine {

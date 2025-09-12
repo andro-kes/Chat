@@ -11,10 +11,7 @@ import (
 	"os"
 	"net/http"
 
-	"github.com/andro-kes/Chat/shared/models"
 	"github.com/andro-kes/Chat/auth/internal/utils"
-
-	"github.com/gin-gonic/gin"
 )
 
 var oauth2Config *oauth2.Config
