@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"time"
@@ -12,23 +13,24 @@ import (
 	"go.uber.org/zap"
 )
 
-type TokenServiceRepo interface {
+type TokenService interface {
 	GenerateRefreshToken(userId uuid.UUID) (string, error)
 	GenerateAccessToken(userId uuid.UUID) (string, error)
-	SetTokenCookie(w http.ResponseWriter, name, value string, expires time.Time)
+	RevokeRefreshToken(tokenID uuid.UUID)
+	ParseRefreshToken(tokenString string) (string, error)
 }
 
-type TokenService struct {
-	tokenRepo *repository.DBTokenRepo
+type tokenService struct {
+	TokenRepo repository.TokenRepo
 }
 
-func NewTokenService() *TokenService {
-	return &TokenService{
-		tokenRepo: repository.NewTokenRepo(),
+func NewTokenService() *tokenService {
+	return &tokenService{
+		TokenRepo: repository.NewTokenRepo(),
 	}
 }
 
-func (token *TokenService) GenerateRefreshToken(userId uuid.UUID) (string, error){
+func (token *tokenService) GenerateRefreshToken(userId uuid.UUID) (string, error){
 	logger.Log.Info(
 		"Генерация нового refresh token",
 	)
@@ -56,12 +58,12 @@ func (token *TokenService) GenerateRefreshToken(userId uuid.UUID) (string, error
 		return "", err
 	}
 
-	err = token.tokenRepo.Save(userId, newRefreshTokenID, tokenString)
+	err = token.TokenRepo.Save(userId, newRefreshTokenID, tokenString)
 
 	return tokenString, err
 }
 
-func (token *TokenService) GenerateAccessToken(userId uuid.UUID) (string, error) {
+func (token *tokenService) GenerateAccessToken(userId uuid.UUID) (string, error) {
 	logger.Log.Info(
 		"Генерация нового access токена",
 	)
@@ -80,19 +82,55 @@ func (token *TokenService) GenerateAccessToken(userId uuid.UUID) (string, error)
 	generatedAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	secretKey := []byte(os.Getenv("SECRET_KEY"))
+
 	tokenString, err := generatedAccessToken.SignedString(secretKey)
+	if err != nil {
+		logger.Log.Error(
+			"Не удалось создать access token",
+			zap.Error(err),
+		)
+	}
 
 	return tokenString, err
 }
 
-func (token *TokenService) SetTokenCookie(w http.ResponseWriter, name, value string) {
-	cookie := &http.Cookie{
-        Name:     name,
-        Value:    value,
-        Path:     "/",
-        HttpOnly: true, // Доступ только через HTTP, защита от XSS
-        Secure:   true, // Только HTTPS
-        SameSite: http.SameSiteStrictMode, // Защита от CSRF
-    }
-    http.SetCookie(w, cookie)
+func (token *tokenService) RevokeRefreshToken(tokenID uuid.UUID) {
+
+}
+
+func (token *tokenService) GetTokenCookie(r *http.Request, name string) (string, error) {
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		logger.Log.Warn(
+			"Не удалось получить токен из cookie",
+			zap.Error(err),
+		)
+		return "", err
+	}
+
+	return cookie.Value, nil
+}
+
+// Возвращает token_id string
+func (token *tokenService) ParseRefreshToken(tokenString string) (string, error) {
+	parsedToken, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(t *jwt.Token) (any, error) {
+		return []byte(os.Getenv("SECRET_KEY")), nil
+	})
+	if err != nil {
+		logger.Log.Error(
+			"Не удалось спарсить refresh token",
+			zap.Error(err),
+		)
+		return "", err
+	}
+
+	claims, ok := parsedToken.Claims.(jwt.RegisteredClaims)
+	if !ok {
+		logger.Log.Warn(
+			"Невалидные claims для refresh token",
+		)
+		return "", errors.New("Невалидные claims")
+	}
+
+	return claims.ID, nil
 }

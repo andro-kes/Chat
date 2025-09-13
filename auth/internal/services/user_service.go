@@ -1,32 +1,40 @@
 package services
 
 import (
-	"github.com/andro-kes/Chat/auth/logger"
 	"github.com/andro-kes/Chat/auth/internal/models"
 	"github.com/andro-kes/Chat/auth/internal/repository"
 	"github.com/andro-kes/Chat/auth/internal/utils"
+	"github.com/andro-kes/Chat/auth/logger"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
-
-type UserServiceRepo interface {
-	Login(user models.User) 
-	Logout()
+type UserService interface {
+	Login(user models.User) (*LoginData, error)
+	Logout(token string) error
 	SignUp()
 	Update()
 }
 
-type UserService struct {
-	Repo *repository.DBUserRepo
+type userService struct {
+	Repo         *repository.DBUserRepo
+	TokenService TokenService
 }
 
-func NewUserService() *UserService {
-	return &UserService{
+func NewUserService() *userService {
+	return &userService{
 		Repo: repository.NewUserRepo(),
+		TokenService: NewTokenService(),
 	}
 }
 
-func (us *UserService) Login(user models.User) (*models.User, error) {
+type LoginData struct {
+	User               *models.User
+	RefreshTokenString string
+	AccessTokenString  string
+}
+
+func (us *userService) Login(user models.User) (*LoginData, error) {
 	logger.Log.Info(
 		"Попытка входа в систему",
 		zap.String("email", user.Email),
@@ -34,7 +42,7 @@ func (us *UserService) Login(user models.User) (*models.User, error) {
 
 	existingUser, err := us.Repo.FindByEmail(user.Email)
 	if err != nil {
-		return &models.User{}, err
+		return &LoginData{}, err
 	}
 
 	err = utils.CompareHashPasswords(existingUser.Password, user.Password)
@@ -43,19 +51,50 @@ func (us *UserService) Login(user models.User) (*models.User, error) {
 			"Пароли не совпадают",
 			zap.Error(err),
 		)
+		return &LoginData{}, err
 	}
 
-	return existingUser, err
+	refreshTokenString, err := us.TokenService.GenerateRefreshToken(existingUser.ID)
+	if err != nil {
+		return &LoginData{}, err
+	}
+
+	accessTokenString, err := us.TokenService.GenerateAccessToken(existingUser.ID)
+	if err != nil {
+		return &LoginData{}, err
+	}
+
+	return &LoginData{
+		User:               existingUser,
+		RefreshTokenString: refreshTokenString,
+		AccessTokenString:  accessTokenString,
+	}, nil
 }
 
-func (us *UserService) Logout() {
+func (us userService) Logout(token string) error {
+	tokenStringID, err := us.TokenService.ParseRefreshToken(token)
+	if err != nil {
+		return err
+	}
+
+	tokenID, err := uuid.Parse(tokenStringID)
+	if err != nil {
+		logger.Log.Error(
+			"Неверный ID для refresh token",
+			zap.Error(err),
+		)
+		return err
+	}
+
+	err = us.TokenService.(*tokenService).TokenRepo.DeleteByID(tokenID)
 	
+	return err
 }
 
-func (us *UserService) SignUp() {
-	
+func (us userService) SignUp() {
+
 }
 
-func (us *UserService) Update() {
-	
+func (us userService) Update() {
+
 }

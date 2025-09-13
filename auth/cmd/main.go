@@ -8,17 +8,15 @@ import (
 )
 
 func main() {
-	logger.Init()
-
-	defer logger.Close()
-
+	
+	authHandlers := handlers.NewAuthHandlers()
 	
 
-	http.HandleFunc("/yandex_auth", handlers.AuthYandexHandler)
+	http.HandleFunc("/yandex_auth", authHandlers.AuthYandexHandler)
 	router.GET("/auth", auth.LoginYandexHandler)
 
-	router.GET("/", auth.LoginPageHandler)
-	http.HandleFunc("/api/login", auth.LoginHandler)
+	http.HandleFunc("/", authHandlers.LoginPageHandler)
+	http.HandleFunc("/api/login", authHandlers.LoginHandler)
 	
 	router.GET("/signup_page", auth.SignUPPageHandler)
 	router.POST("/api/signup", auth.SignUpHandler)

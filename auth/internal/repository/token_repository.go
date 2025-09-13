@@ -12,20 +12,21 @@ import (
 )
 
 type TokenRepo interface {
-	Save(token *models.RefreshTokens) error
+	Save(userId, tokenId uuid.UUID, tokenString string) error
+	DeleteByID(tokenID uuid.UUID) error
 }
 
-type DBTokenRepo struct {
+type tokenRepo struct {
 	Pool *pgxpool.Pool
 }
 
-func NewTokenRepo() *DBTokenRepo {
-	return &DBTokenRepo{
+func NewTokenRepo() *tokenRepo {
+	return &tokenRepo{
 		Pool: database.GetDBPool(),
 	}
 }
 
-func (dtr *DBTokenRepo) Save(userId, tokenId uuid.UUID, tokenString string) error {
+func (dtr *tokenRepo) Save(userId, tokenId uuid.UUID, tokenString string) error {
 	var token models.RefreshTokens
 	err := dtr.Pool.QueryRow(
 		context.Background(),
@@ -36,6 +37,24 @@ func (dtr *DBTokenRepo) Save(userId, tokenId uuid.UUID, tokenString string) erro
 	if err != nil {
 		logger.Log.Error(
 			"Не удалось сохранить refresh токен в базу",
+			zap.Error(err),
+		)
+	}
+
+	return err
+}
+
+func (dtr *tokenRepo) DeleteByID(tokenID uuid.UUID) error {
+	var token models.RefreshTokens
+	err := dtr.Pool.QueryRow(
+		context.Background(),
+		"DELETE FROM refresh_tokens WHERE token_id=$1",
+		tokenID,
+	).Scan(&token)
+
+	if err != nil {
+		logger.Log.Error(
+			"Не удалось отозвать refresh token",
 			zap.Error(err),
 		)
 	}
