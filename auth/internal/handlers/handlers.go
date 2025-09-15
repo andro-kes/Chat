@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -40,7 +42,7 @@ func initData() {
 	}
 	
 	if oauth2Config.ClientID == "" || oauth2Config.ClientSecret == "" {
-		log.Fatal("Не обнаружены ClientID or ClientSecret")
+		logger.Log.Fatal("Не обнаружены ClientID or ClientSecret")
 	}
 }
 
@@ -54,60 +56,110 @@ var (
 	oauthStateString = os.Getenv("SECRET_KEY")
 )
 
-func (*authHandlers) AuthYandexHandler(c *gin.Context) {
+func (*authHandlers) AuthYandexHandler(w http.ResponseWriter, r *http.Request) {
 	initData()
 	url := oauth2Config.AuthCodeURL(oauthStateString)
-	log.Println("Перенаправляю на: ", url)
-	c.Redirect(http.StatusTemporaryRedirect, url) 
+	logger.Log.Info(
+		"Перенаправляю",
+		zap.String("url", url),
+	)
+	http.Redirect(w, r, url, http.StatusTemporaryRedirect) 
 }
 
-func (*authHandlers) LoginYandexHandler(c *gin.Context) {
+func (ah *authHandlers) LoginYandexHandler(w http.ResponseWriter) {
 	initData()
-	log.Println("LoginYandexHandler запущен") 
+	logger.Log.Info("LoginYandexHandler запущен")
 
-	state := c.Query("state")
-	log.Println("Получен state:", state)
-	if state != oauthStateString {
-		log.Printf("Неверный статус, ожидалось: '%s', получено: '%s'\n", oauthStateString, state)
-		c.AbortWithStatus(http.StatusUnauthorized)
+	currentUrl := oauth2Config.AuthCodeURL(oauthStateString)
+	query, err := url.Parse(currentUrl)
+	if err != nil {
+		logger.Log.Error(
+			"Не удалось распарсить url",
+			zap.Error(err),
+		)
+		responses.SendJSONResponse(w, 404, map[string]any{
+			"Error": "не верный адрес страницы",
+		})
 		return
 	}
 
-	code := c.Query("code")
-	log.Println("Получен code:", code)
+	params := query.Query()
+
+	state := params.Get("state")
+	logger.Log.Info(
+		"Получен state:", 
+		zap.String("state", state),
+	)
+	if state != oauthStateString {
+		logger.Log.Warn(
+			fmt.Sprintf("Неверный статус, ожидалось: %s, получено: '%s'\n",
+				oauthStateString, state,
+			),
+		)
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Неверный state",
+		})
+		return
+	}
+
+	code := params.Get("code")
+	logger.Log.Info(
+		"Получен код",
+		zap.String("code", code),
+	)
+
 	token, err := oauth2Config.Exchange(context.Background(), code)
 	if err != nil {
-		log.Printf("oauthConf.Exchange() не сработал из-за: '%s'\n", err)
-		c.AbortWithStatus(http.StatusBadRequest)
+		logger.Log.Error(
+			"oauthConf.Exchange() не сработал",
+			zap.Error(err),
+		)
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "oauthConf.Exchange() не сработал",
+		})
 		return
 	}
 
 	client := oauth2Config.Client(context.Background(), token)
 	resp, err := client.Get("https://login.yandex.ru/info?format=json")
 	if err != nil {
-		log.Printf("Не удалось получить информацию о пользователе: %v", err)
-		c.AbortWithStatus(http.StatusInternalServerError)
+		logger.Log.Error(
+			"Не удалось получить информацию о пользователе",
+			zap.Error(err),
+		)
+		responses.SendJSONResponse(w, 500, map[string]any{
+			"Error": "Не удалось получить информацию о пользователе",
+		})
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Не удалось прочитать тело ответа: %v", err)
-		c.AbortWithStatus(http.StatusInternalServerError)
+		logger.Log.Error(
+			"Не удалось прочитать тело ответа",
+			zap.Error(err),
+		)
+		responses.SendJSONResponse(w, 500, map[string]any{
+			"Error": "Не удалось прочитать тело ответа",
+		})
 		return
 	}
 
 	var yandexUser YandexUser
 	err = json.Unmarshal(body, &yandexUser)
 	if err != nil {
-		log.Printf("Не удалось разобрать JSON: %v", err)
-		c.AbortWithStatus(http.StatusInternalServerError)
+		logger.Log.Error(
+			"Не удалось разобрать JSON",
+			zap.Error(err),
+		)
+		responses.SendJSONResponse(w, 500, map[string]any{
+			"Error": "Не удалось разобрать JSON",
+		})
 		return
 	}
 
-	DB := utils.GetDB(c)
-
+	ah.UserService.OAuthLogin(yandexUser.Login, yandexUser.DefaultEmail)
 	var existingUser models.User
 	DB.Where("email = ?", yandexUser.DefaultEmail).First(&existingUser)
 	if existingUser.ID != 0 {
@@ -160,12 +212,17 @@ func (ah *authHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loginData, err := ah.UserService.Login(user)
+	loginData, err := ah.UserService.Login(&user)
 	if err != nil {
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Серверная неисправность",
-		})
-		return
+		if err.Error() == "Пользователь был создан" {
+			// Добавить handler для добавления пароля
+			http.Redirect(w, r, "/set_password", http.StatusMovedPermanently)
+		} else {
+			responses.SendJSONResponse(w, 400, map[string]any{
+				"Error": "Не удалось войти в систему",
+			})
+			return
+		}
 	}
 
 	cookie := &http.Cookie{

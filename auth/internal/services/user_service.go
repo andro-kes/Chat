@@ -1,6 +1,8 @@
 package services
 
 import (
+	"errors"
+
 	"github.com/andro-kes/Chat/auth/internal/models"
 	"github.com/andro-kes/Chat/auth/internal/repository"
 	"github.com/andro-kes/Chat/auth/internal/utils"
@@ -10,14 +12,15 @@ import (
 )
 
 type UserService interface {
-	Login(user models.User) (*LoginData, error)
+	Login(user *models.User) (*LoginData, error)
+	OAuthLogin(username, email string) bool
 	Logout(token string) error
 	SignUp()
 	Update()
 }
 
 type userService struct {
-	Repo         *repository.DBUserRepo
+	Repo         repository.UserRepo
 	TokenService TokenService
 }
 
@@ -34,7 +37,7 @@ type LoginData struct {
 	AccessTokenString  string
 }
 
-func (us *userService) Login(user models.User) (*LoginData, error) {
+func (us *userService) Login(user *models.User) (*LoginData, error) {
 	logger.Log.Info(
 		"Попытка входа в систему",
 		zap.String("email", user.Email),
@@ -69,6 +72,28 @@ func (us *userService) Login(user models.User) (*LoginData, error) {
 		RefreshTokenString: refreshTokenString,
 		AccessTokenString:  accessTokenString,
 	}, nil
+}
+
+func (us userService) OAuthLogin(username, email string) (*LoginData, error) {
+	user, err := us.Repo.FindByEmail(email)
+	if err != nil {
+		us.Repo.CreateUser(&models.User{
+			Username: username,
+			Email: email,
+		})
+		return &LoginData{}, errors.New("Пользователь был создан")
+	}
+
+	loginData, err := us.Login(user)
+	if err != nil {
+		logger.Log.Warn(
+			"Пользователь не смог войти через oath",
+			zap.Error(err),
+		)
+		return &LoginData{}, err
+	}
+
+	return loginData, nil
 }
 
 func (us userService) Logout(token string) error {
