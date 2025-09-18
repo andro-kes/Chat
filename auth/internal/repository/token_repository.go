@@ -1,3 +1,4 @@
+// ВРЕМЕННО: Пакет repository содержит доступ к БД для refresh токенов.
 package repository
 
 import (
@@ -26,6 +27,7 @@ func NewTokenRepo() *tokenRepo {
 	}
 }
 
+// Save ВРЕМЕННО: сохраняет refresh token в БД
 func (dtr *tokenRepo) Save(userId, tokenId uuid.UUID, tokenString string) error {
 	var token models.RefreshTokens
 	err := dtr.Pool.QueryRow(
@@ -44,6 +46,7 @@ func (dtr *tokenRepo) Save(userId, tokenId uuid.UUID, tokenString string) error 
 	return err
 }
 
+// DeleteByID ВРЕМЕННО: удаляет refresh token по его ID
 func (dtr *tokenRepo) DeleteByID(tokenID uuid.UUID) error {
 	var token models.RefreshTokens
 	err := dtr.Pool.QueryRow(

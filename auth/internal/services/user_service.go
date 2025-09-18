@@ -1,3 +1,6 @@
+// ВРЕМЕННО: Пакет services содержит бизнес-логику. UserService инкапсулирует
+// операции аутентификации, входа по OAuth, управление токенами и паролями.
+// Комментарии временные и помогут навигации до завершения рефакторинга.
 package services
 
 import (
@@ -13,10 +16,11 @@ import (
 
 type UserService interface {
 	Login(user *models.User) (*LoginData, error)
-	OAuthLogin(username, email string) bool
+	OAuthLogin(username, email string) (*LoginData, error)
 	Logout(token string) error
 	SignUp()
 	Update()
+	SetPassword(user *models.User) error 
 }
 
 type userService struct {
@@ -37,6 +41,8 @@ type LoginData struct {
 	AccessTokenString  string
 }
 
+// Login ВРЕМЕННО: валидирует пользователя, сравнивает пароли и выдает
+// refresh/access токены
 func (us *userService) Login(user *models.User) (*LoginData, error) {
 	logger.Log.Info(
 		"Попытка входа в систему",
@@ -74,14 +80,17 @@ func (us *userService) Login(user *models.User) (*LoginData, error) {
 	}, nil
 }
 
-func (us userService) OAuthLogin(username, email string) (*LoginData, error) {
+// OAuthLogin ВРЕМЕННО: логика входа/регистрации через OAuth. Если пользователя
+// нет — создается, иначе выполняется стандартный вход. Возвращает LoginData.
+func (us *userService) OAuthLogin(username, email string) (*LoginData, error) {
 	user, err := us.Repo.FindByEmail(email)
 	if err != nil {
-		us.Repo.CreateUser(&models.User{
+		newUser := &models.User{
 			Username: username,
 			Email: email,
-		})
-		return &LoginData{}, errors.New("Пользователь был создан")
+		}
+		us.Repo.CreateUser(newUser)
+		return &LoginData{User: newUser}, errors.New("Пользователь был создан")
 	}
 
 	loginData, err := us.Login(user)
@@ -96,7 +105,8 @@ func (us userService) OAuthLogin(username, email string) (*LoginData, error) {
 	return loginData, nil
 }
 
-func (us userService) Logout(token string) error {
+// Logout ВРЕМЕННО: парсит refresh token, получает его uuid и отзывает в хранилище
+func (us *userService) Logout(token string) error {
 	tokenStringID, err := us.TokenService.ParseRefreshToken(token)
 	if err != nil {
 		return err
@@ -116,10 +126,17 @@ func (us userService) Logout(token string) error {
 	return err
 }
 
-func (us userService) SignUp() {
+// SignUp ВРЕМЕННО: заглушка под регистрацию пользователя
+func (us *userService) SignUp() {
 
 }
 
-func (us userService) Update() {
+// Update ВРЕМЕННО: заглушка под обновление профиля
+func (us *userService) Update() {
 
+}
+
+// SetPassword ВРЕМЕННО: устанавливает пароль через репозиторий
+func (us *userService) SetPassword(user *models.User) error {
+	return us.Repo.SetPassword(user)
 }

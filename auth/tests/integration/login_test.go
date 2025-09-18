@@ -3,8 +3,9 @@ package auth_tests
 import (
 	"bytes"
 
+	"github.com/andro-kes/Chat/auth/internal/handlers"
+	"github.com/andro-kes/Chat/auth/internal/models"
 	"github.com/andro-kes/Chat/auth/internal/utils"
-
 
 	"github.com/stretchr/testify/assert"
 
@@ -15,27 +16,24 @@ import (
 )
 
 func TestAPILogin(t *testing.T) {
-	router := SetUpTestRouter()
-	router.POST("/api/login", auth.LoginHandler)
+	authHandlers := NewAuthHandlers()
+	http.HandleFunc("/api/login", authHandlers.LoginHandler)
 	
-	db := utils.GetTestDB()
-	tx := db.Begin()
-	defer tx.Rollback()
-
-	router.Use(func(c *gin.Context) {
-        c.Set("DB", tx)
-        c.Next()
-    })
-
+	pool := SetUp(t)
+	
 	user := models.User{
 		Email: "testemail",
 		Password: "testpassword",
 	}
 	jsonUser, err := json.Marshal(user)
 	assert.NoError(t, err)
-	w := httptest.NewRecorder()
-	req, err := http.NewRequest("POST", "/api/login", bytes.NewBuffer(jsonUser))
+	r, err := http.NewRequest("POST", "/api/login", bytes.NewBuffer(jsonUser))
 	assert.NoError(t, err)
-	router.ServeHTTP(w, req)
-	assert.Equal(t, 200, w.Code)
+	
+	client := &http.Client{}
+	resp, err := client.Do(r)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+	
+	assert.Equal(t, 200, resp.StatusCode)
 }

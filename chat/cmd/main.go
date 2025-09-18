@@ -1,3 +1,4 @@
+// ВРЕМЕННО: Точка входа сервиса чата. Настройка роутинга и middlewares.
 package main
 
 import (
@@ -7,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// main ВРЕМЕННО: инициализирует gin, подключает middlewares и регистрирует роуты
 func main() {
 	router := gin.Default()
 	router.Use(middlewares.DBMiddleWare())

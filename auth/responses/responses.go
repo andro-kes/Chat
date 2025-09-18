@@ -1,3 +1,5 @@
+// ВРЕМЕННО: Пакет responses предоставляет вспомогательные функции для ответов
+// HTML и JSON. Комментарии временные на период рефакторинга.
 package responses
 
 import (
@@ -16,6 +18,7 @@ func init() {
 	templates = template.Must(template.ParseGlob("/app/web/templates/*"))
 }
 
+// SendHTMLResponse ВРЕМЕННО: рендерит HTML-шаблон и пишет ответ клиенту
 func SendHTMLResponse(w http.ResponseWriter, statusCode int, name string, data map[string]any) {
 	var buf bytes.Buffer
 
@@ -42,6 +45,7 @@ func SendHTMLResponse(w http.ResponseWriter, statusCode int, name string, data m
 	buf.WriteTo(w)
 }
 
+// SendJSONResponse ВРЕМЕННО: отправляет JSON-ответ с указанным статусом
 func SendJSONResponse(w http.ResponseWriter, statusCode int, data map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)

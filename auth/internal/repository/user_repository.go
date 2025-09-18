@@ -1,7 +1,9 @@
+// ВРЕМЕННО: Пакет repository инкапсулирует доступ к БД (users).
 package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/andro-kes/Chat/auth/internal/database"
@@ -12,10 +14,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// Логика для работы с базой
+// UserRepo ВРЕМЕННО: интерфейс доступа к данным пользователя
 type UserRepo interface {
 	FindByEmail(email string) (*models.User, error)
 	CreateUser(user *models.User) error
+	SetPassword(user *models.User) error
 }
 
 type DBUserRepo struct {
@@ -28,6 +31,7 @@ func NewUserRepo() UserRepo {
 	}
 }
 
+// FindByEmail ВРЕМЕННО: ищет пользователя по email
 func (dur *DBUserRepo) FindByEmail(email string) (*models.User, error) {
 	var user models.User
 	err := dur.Pool.QueryRow(
@@ -47,6 +51,7 @@ func (dur *DBUserRepo) FindByEmail(email string) (*models.User, error) {
 	return &user, err
 }
 
+// CreateUser ВРЕМЕННО: создает нового пользователя
 func (dur *DBUserRepo) CreateUser(user *models.User) error {
 	logger.Log.Info(
 		"Создаем нового пользователя",
@@ -84,4 +89,22 @@ func (dur *DBUserRepo) CreateUser(user *models.User) error {
 	}
 
 	return err
+}
+
+
+// SetPassword ВРЕМЕННО: обновляет пароль пользователя
+func (dur *DBUserRepo) SetPassword(user *models.User) error {
+	row := dur.Pool.QueryRow(
+		context.Background(),
+		"UPDATE users SET password=$1 WHERE email=$2",
+		user.Password, user.Email,
+	)
+	if row != nil {
+		logger.Log.Warn(
+			"Не удалось добавить пароль полльзователю",
+			zap.String("password", user.Password),
+		)
+		return errors.New("Не удалось обновить пароль")
+	}
+	return nil
 }

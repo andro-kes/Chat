@@ -1,3 +1,6 @@
+// ВРЕМЕННО: Точка входа сервиса аутентификации. Конфигурация роутов и запуск
+// HTTP-сервера. Комментарии временные и предназначены для ориентира в период
+// рефакторинга.
 package main
 
 import (
@@ -7,6 +10,7 @@ import (
 	"github.com/andro-kes/Chat/auth/internal/handlers"
 )
 
+// main ВРЕМЕННО: регистрация HTTP-роутов и запуск сервера
 func main() {
 	
 	authHandlers := handlers.NewAuthHandlers()

@@ -1,3 +1,7 @@
+// ВРЕМЕННО: Пакет handlers содержит HTTP-хэндлеры аутентификации и управления
+// пользователями. Включает OAuth (Яндекс) и стандартные операции: вход,
+// регистрация, выход, обновление и установка пароля после OAuth. Логирование
+// реализовано через zap. Комментарии временные для ориентира при рефакторинге.
 package handlers
 
 import (
@@ -20,6 +24,7 @@ import (
 	"golang.org/x/oauth2/yandex"
 )
 
+// Управляющая структура, которая содержит все методы для работы с пользователем
 type authHandlers struct {
 	UserService services.UserService
 }
@@ -56,6 +61,8 @@ var (
 	oauthStateString = os.Getenv("SECRET_KEY")
 )
 
+// Получает запрос пользователя на OAuth
+// Перенаправляет запрос на LoginYandexHandler
 func (*authHandlers) AuthYandexHandler(w http.ResponseWriter, r *http.Request) {
 	initData()
 	url := oauth2Config.AuthCodeURL(oauthStateString)
@@ -66,6 +73,10 @@ func (*authHandlers) AuthYandexHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect) 
 }
 
+// LoginYandexHandler ВРЕМЕННО: обрабатывает редирект OAuth, проверяет state,
+// обменивает код на токен, запрашивает профиль пользователя в Яндексе и
+// передает данные в сервис пользователей. Возвращает JSON/HTML в зависимости
+// от результата (создание пользователя или успешный вход).
 func (ah *authHandlers) LoginYandexHandler(w http.ResponseWriter) {
 	initData()
 	logger.Log.Info("LoginYandexHandler запущен")
@@ -159,49 +170,64 @@ func (ah *authHandlers) LoginYandexHandler(w http.ResponseWriter) {
 		return
 	}
 
-	ah.UserService.OAuthLogin(yandexUser.Login, yandexUser.DefaultEmail)
-	var existingUser models.User
-	DB.Where("email = ?", yandexUser.DefaultEmail).First(&existingUser)
-	if existingUser.ID != 0 {
-		log.Println("Вход в систему через Яндекс")
+	loginData, err := ah.UserService.OAuthLogin(yandexUser.Login, yandexUser.DefaultEmail)
+	if err.Error() == "Пользователь был создан" {
+		responses.SendHTMLResponse(w, 301, "auth.html", map[string]any{
+			"title": "Добавить пароль",
+			"username": loginData.User.Username,
+			"email": loginData.User.Email,
+		})
+		return
+	} else if err != nil {
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Не удалось войти с помощью OAuth",
+		})
+		return
 	} else {
-		newUser := &models.User{
-			Username: yandexUser.Login,
-			Email:    yandexUser.DefaultEmail,
-		}
-		DB.Create(newUser)
-		existingUser = *newUser
+		responses.SendJSONResponse(w, 200, map[string]any{
+			"Message": "Успешный вход",
+		})
+		return
 	}
-	
-	refreshToken, err := utils.GenerateRefreshToken(DB, existingUser.ID)
+}
+
+// SetPassword ВРЕМЕННО: добавляет пароль пользователю после OAuth
+func (au *authHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
+	var user *models.User
+	err := binding.BindUserWithJSON(r, &user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logger.Log.Warn(
+			"Невалидный пароль",
+			zap.String("password", user.Password),
+		)
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Невалидный пароль",
+		})
 		return
 	}
 
-	tokenString, err := utils.GenerateAccessToken(existingUser)
+	err = au.UserService.SetPassword(user)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка при создании токена"})
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Не удалось установить пароль",
+		})
 		return
 	}
-	expititionTime := time.Now().Add(5 * time.Minute)
-
-	c.SetCookie("refresh_token", refreshToken, int(time.Now().Add(7*24*time.Hour).Unix()), "/", "localhost", false, true)
-	c.SetCookie("token", tokenString, int(expititionTime.Unix()), "/", "localhost", false, true)
-
-	c.HTML(http.StatusOK, "auth.html", gin.H{
-		"message": "Успешная авторизация через Яндекс",
-		"username": yandexUser.Login,
-		"email":   yandexUser.DefaultEmail,
+	responses.SendJSONResponse(w, 200, map[string]any{
+		"Message": "Пароль установлен",
 	})
 }
 
+
+// LoginPageHandler ВРЕМЕННО: отдает HTML-страницу входа
 func (*authHandlers) LoginPageHandler(w http.ResponseWriter, r *http.Request) {
 	responses.SendHTMLResponse(w, 200, "login.html", map[string]any{
 		"title": "login",
 	})
 }
 
+// LoginHandler ВРЕМЕННО: аутентифицирует пользователя и устанавливает куки
+// с refresh и access токенами с безопасными флагами
 func (ah *authHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	err := binding.BindUserWithJSON(r, &user)
@@ -214,15 +240,10 @@ func (ah *authHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	loginData, err := ah.UserService.Login(&user)
 	if err != nil {
-		if err.Error() == "Пользователь был создан" {
-			// Добавить handler для добавления пароля
-			http.Redirect(w, r, "/set_password", http.StatusMovedPermanently)
-		} else {
-			responses.SendJSONResponse(w, 400, map[string]any{
-				"Error": "Не удалось войти в систему",
-			})
-			return
-		}
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Не удалось войти в систему",
+		})
+		return
 	}
 
 	cookie := &http.Cookie{
@@ -251,6 +272,7 @@ func (ah *authHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// LogoutHandler ВРЕМЕННО: инвалидирует refresh токен и очищает куки
 func (ah *authHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
 	if err != nil {
@@ -286,10 +308,13 @@ func (ah *authHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// SignUPPageHandler ВРЕМЕННО: отдает HTML-страницу регистрации
 func (*authHandlers) SignUPPageHandler(c *gin.Context) {
 	c.HTML(200, "signUp.html", nil)
 }
 
+// SignUpHandler ВРЕМЕННО: регистрирует пользователя, хеширует пароль и
+// устанавливает первичные куки с токенами
 func (*authHandlers) SignUpHandler(c *gin.Context) {
 	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {
@@ -345,6 +370,7 @@ func (*authHandlers) SignUpHandler(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Создан новый пользователь"})
 }
 
+// UpdateUser ВРЕМЕННО: обновляет имя пользователя и пароль
 func (*authHandlers) UpdateUser(c *gin.Context) {
 	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {

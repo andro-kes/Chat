@@ -1,3 +1,4 @@
+// ВРЕМЕННО: Тонкая обертка над zap-логгером для централизованного логирования.
 package logger
 
 import (
@@ -6,6 +7,7 @@ import (
 
 var Log *zap.Logger
 
+// Init ВРЕМЕННО: инициализирует глобальный zap-логгер в production-конфигурации
 func Init() {
 	config := zap.NewProductionConfig()
     config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
@@ -17,6 +19,7 @@ func Init() {
 	Log = logger
 }
 
+// Close ВРЕМЕННО: корректно синхронизирует и завершает работу логгера
 func Close() {
 	Log.Sync()
 }

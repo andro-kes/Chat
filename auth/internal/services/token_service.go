@@ -1,3 +1,5 @@
+// ВРЕМЕННО: Пакет services инкапсулирует логику генерации и валидации токенов
+// (access/refresh) с использованием JWT и хранением refresh токенов в БД.
 package services
 
 import (
@@ -30,6 +32,7 @@ func NewTokenService() *tokenService {
 	}
 }
 
+// GenerateRefreshToken ВРЕМЕННО: выпускает refresh token и сохраняет его в БД
 func (token *tokenService) GenerateRefreshToken(userId uuid.UUID) (string, error){
 	logger.Log.Info(
 		"Генерация нового refresh token",
@@ -63,6 +66,7 @@ func (token *tokenService) GenerateRefreshToken(userId uuid.UUID) (string, error
 	return tokenString, err
 }
 
+// GenerateAccessToken ВРЕМЕННО: выпускает короткоживущий access token
 func (token *tokenService) GenerateAccessToken(userId uuid.UUID) (string, error) {
 	logger.Log.Info(
 		"Генерация нового access токена",
@@ -94,10 +98,12 @@ func (token *tokenService) GenerateAccessToken(userId uuid.UUID) (string, error)
 	return tokenString, err
 }
 
+// RevokeRefreshToken ВРЕМЕННО: заглушка для отзыва refresh токена
 func (token *tokenService) RevokeRefreshToken(tokenID uuid.UUID) {
 
 }
 
+// GetTokenCookie ВРЕМЕННО: утилита получения значения токена из cookie
 func (token *tokenService) GetTokenCookie(r *http.Request, name string) (string, error) {
 	cookie, err := r.Cookie(name)
 	if err != nil {
@@ -111,7 +117,7 @@ func (token *tokenService) GetTokenCookie(r *http.Request, name string) (string,
 	return cookie.Value, nil
 }
 
-// Возвращает token_id string
+// ParseRefreshToken ВРЕМЕННО: валидирует и извлекает token_id из refresh токена
 func (token *tokenService) ParseRefreshToken(tokenString string) (string, error) {
 	parsedToken, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(t *jwt.Token) (any, error) {
 		return []byte(os.Getenv("SECRET_KEY")), nil

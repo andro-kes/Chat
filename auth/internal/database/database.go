@@ -1,3 +1,6 @@
+// ВРЕМЕННО: Пакет database инкапсулирует создание и доступ к пулу соединений
+// PostgreSQL через pgxpool. Комментарии временные, используются в рамках
+// текущего рефакторинга.
 package database
 
 import (
@@ -12,7 +15,9 @@ import (
 
 var dbPool *pgxpool.Pool
 
-// Подключение к базе данных
+// Init ВРЕМЕННО: конфигурирует пул соединений на основании переменной окружения
+// DB_USER_URL, задает базовые параметры пула и сохраняет ссылку в локальной
+// переменной пакета для последующего использования.
 func Init() {
 	db_url := os.Getenv("DB_USER_URL")
 	if db_url == "" {
@@ -45,9 +50,14 @@ func Init() {
 		)
 	}
 
-	dbPool = pool
+	SetDBPool(pool)
 }
 
+// GetDBPool ВРЕМЕННО: предоставляет доступ к глобальному пулу соединений
 func GetDBPool() *pgxpool.Pool {
 	return dbPool
+}
+
+func SetDBPool(pool *pgxpool.Pool) {
+	dbPool = pool
 }
