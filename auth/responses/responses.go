@@ -14,7 +14,7 @@ import (
 
 var templates *template.Template
 
-func init() {
+func Init() {
 	templates = template.Must(template.ParseGlob("/app/web/templates/*"))
 }
 

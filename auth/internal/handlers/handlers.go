@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"time"
 
 	"github.com/andro-kes/Chat/auth/binding"
 	"github.com/andro-kes/Chat/auth/internal/models"
@@ -25,12 +24,12 @@ import (
 )
 
 // Управляющая структура, которая содержит все методы для работы с пользователем
-type authHandlers struct {
+type AuthHandlers struct {
 	UserService services.UserService
 }
 
-func NewAuthHandlers() *authHandlers {
-	return &authHandlers{
+func NewAuthHandlers() *AuthHandlers {
+	return &AuthHandlers{
 		UserService: services.NewUserService(),
 	}
 }
@@ -63,7 +62,7 @@ var (
 
 // Получает запрос пользователя на OAuth
 // Перенаправляет запрос на LoginYandexHandler
-func (*authHandlers) AuthYandexHandler(w http.ResponseWriter, r *http.Request) {
+func (*AuthHandlers) AuthYandexHandler(w http.ResponseWriter, r *http.Request) {
 	initData()
 	url := oauth2Config.AuthCodeURL(oauthStateString)
 	logger.Log.Info(
@@ -77,7 +76,7 @@ func (*authHandlers) AuthYandexHandler(w http.ResponseWriter, r *http.Request) {
 // обменивает код на токен, запрашивает профиль пользователя в Яндексе и
 // передает данные в сервис пользователей. Возвращает JSON/HTML в зависимости
 // от результата (создание пользователя или успешный вход).
-func (ah *authHandlers) LoginYandexHandler(w http.ResponseWriter) {
+func (ah *AuthHandlers) LoginYandexHandler(w http.ResponseWriter, r *http.Request) {
 	initData()
 	logger.Log.Info("LoginYandexHandler запущен")
 
@@ -192,8 +191,8 @@ func (ah *authHandlers) LoginYandexHandler(w http.ResponseWriter) {
 }
 
 // SetPassword ВРЕМЕННО: добавляет пароль пользователю после OAuth
-func (au *authHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
-	var user *models.User
+func (au *AuthHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
+	var user models.User
 	err := binding.BindUserWithJSON(r, &user)
 	if err != nil {
 		logger.Log.Warn(
@@ -206,7 +205,7 @@ func (au *authHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = au.UserService.SetPassword(user)
+	err = au.UserService.SetPassword(&user)
 	if err != nil {
 		responses.SendJSONResponse(w, 400, map[string]any{
 			"Error": "Не удалось установить пароль",
@@ -220,7 +219,7 @@ func (au *authHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 
 
 // LoginPageHandler ВРЕМЕННО: отдает HTML-страницу входа
-func (*authHandlers) LoginPageHandler(w http.ResponseWriter, r *http.Request) {
+func (*AuthHandlers) LoginPageHandler(w http.ResponseWriter, r *http.Request) {
 	responses.SendHTMLResponse(w, 200, "login.html", map[string]any{
 		"title": "login",
 	})
@@ -228,7 +227,7 @@ func (*authHandlers) LoginPageHandler(w http.ResponseWriter, r *http.Request) {
 
 // LoginHandler ВРЕМЕННО: аутентифицирует пользователя и устанавливает куки
 // с refresh и access токенами с безопасными флагами
-func (ah *authHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (ah *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	err := binding.BindUserWithJSON(r, &user)
 	if err != nil {
@@ -273,7 +272,7 @@ func (ah *authHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LogoutHandler ВРЕМЕННО: инвалидирует refresh токен и очищает куки
-func (ah *authHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (ah *AuthHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
 	if err != nil {
 		logger.Log.Warn(
@@ -309,110 +308,54 @@ func (ah *authHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // SignUPPageHandler ВРЕМЕННО: отдает HTML-страницу регистрации
-func (*authHandlers) SignUPPageHandler(c *gin.Context) {
-	c.HTML(200, "signUp.html", nil)
+func (*AuthHandlers) SignUPPageHandler(w http.ResponseWriter, r *http.Request) {
+	responses.SendHTMLResponse(w, 200, "signUp.html", map[string]any{
+		"title": "sign_up_page",
+	})
 }
 
 // SignUpHandler ВРЕМЕННО: регистрирует пользователя, хеширует пароль и
 // устанавливает первичные куки с токенами
-func (*authHandlers) SignUpHandler(c *gin.Context) {
+func (au *AuthHandlers) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
-		log.Println("Не удалось зарегистрировать пользователя")
-		c.JSON(400, gin.H{
-			"message": "Не удалось зарегистрировать пользователя",
-			"error": err.Error(),
+	if err := binding.BindUserWithJSON(r, &user); err != nil {
+		logger.Log.Warn(
+			"Не удалось получить данные пользователя",
+			zap.Error(err),
+		)
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Не удалось извлечь данные пользователя",
 		})
 	}
 
-	DB := utils.GetDB(c)
-
-	var existingUser models.User
-	DB.Where("email = ?", user.Email).First(&existingUser)
-
-	if existingUser.ID != 0 {
-		c.JSON(400, gin.H{
-			"message": "Пользователь с таким email уже существует",
-		})
-		return
-	}
-
-	password, err := utils.GenerateHashPassword(user.Password)
+	loginData, err := au.UserService.SignUp(&user)
 	if err != nil {
-		c.JSON(400, gin.H{
-			"message": "Ошибка хэширования пароля",
-			"error": err.Error(),
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Не удалось создать пользователя",
 		})
 	}
-	user.Password = string(password)
 
-	DB.Create(&user)
-	log.Println("Создан новый пользователь", user.Username)
+	cookie := &http.Cookie{
+        Name:     "refresh_token",
+        Value:    loginData.RefreshTokenString,
+        Path:     "/",
+        HttpOnly: true, // Доступ только через HTTP, защита от XSS
+        Secure:   true, // Только HTTPS
+        SameSite: http.SameSiteStrictMode, // Защита от CSRF
+    }
+    http.SetCookie(w, cookie)
 
-	user.Password = ""
+	cookie = &http.Cookie{
+        Name:     "access_token",
+        Value:    loginData.AccessTokenString,
+        Path:     "/",
+        HttpOnly: true, // Доступ только через HTTP, защита от XSS
+        Secure:   true, // Только HTTPS
+        SameSite: http.SameSiteStrictMode, // Защита от CSRF
+    }
+    http.SetCookie(w, cookie)
 
-	refreshToken, err := utils.GenerateRefreshToken(DB, user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	tokenString, err := utils.GenerateAccessToken(existingUser)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка при создании токена"})
-		return
-	}
-	expititionTime := time.Now().Add(5 * time.Minute)
-
-	c.SetCookie("refresh_token", refreshToken, int(time.Now().Add(7*24*time.Hour).Unix()), "/", "localhost", false, true)
-	c.SetCookie("token", tokenString, int(expititionTime.Unix()), "/", "localhost", false, true)
-
-	c.JSON(200, gin.H{"message": "Создан новый пользователь"})
-}
-
-// UpdateUser ВРЕМЕННО: обновляет имя пользователя и пароль
-func (*authHandlers) UpdateUser(c *gin.Context) {
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(400, gin.H{
-			"message": "Невалидные данные",
-			"error": err.Error(),
-		})
-		return
-	}
-
-	DB := utils.GetDB(c)
-
-	var existingUser models.User
-	obj := DB.Where("email = ?", user.Email).First(&existingUser)
-	if obj.Error != nil {
-		c.JSON(400, gin.H{
-			"message": "Пользователь не найден",
-			"error": obj.Error.Error(),
-		})
-		return
-	}
-
-	existingUser.Username = user.Username
-
-	password, err := utils.GenerateHashPassword(user.Password)
-	if err != nil {
-		c.JSON(400, gin.H{
-			"message": "Не удалось получить hash пароля",
-			"error": err.Error(),
-		})
-		return
-	}
-	existingUser.Password = string(password)
-
-	obj = DB.Save(&existingUser)
-	if obj.Error != nil {
-		c.JSON(400, gin.H{
-			"message": "Не удалось сохранить изменения",
-			"error": obj.Error.Error(),
-		})
-		return
-	}
-
-	c.JSON(200, gin.H{"message": "Данные успешно обновлены"})
+	responses.SendJSONResponse(w, 200, map[string]any{
+		"Message": "Новый пользователь успешно вошел в систему",
+	})
 }

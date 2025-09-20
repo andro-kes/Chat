@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"github.com/andro-kes/Chat/auth/internal/database"
-	"github.com/andro-kes/Chat/auth/internal/models"
 	"github.com/andro-kes/Chat/auth/logger"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,12 +28,11 @@ func NewTokenRepo() *tokenRepo {
 
 // Save ВРЕМЕННО: сохраняет refresh token в БД
 func (dtr *tokenRepo) Save(userId, tokenId uuid.UUID, tokenString string) error {
-	var token models.RefreshTokens
-	err := dtr.Pool.QueryRow(
+	_, err := dtr.Pool.Exec(
 		context.Background(),
 		"INSERT INTO refresh_tokens (user_id, token_id, token) VALUES ($1, $2, $3)",
 		userId, tokenId, tokenString,
-	).Scan(&token)
+	)
 	
 	if err != nil {
 		logger.Log.Error(
@@ -48,12 +46,11 @@ func (dtr *tokenRepo) Save(userId, tokenId uuid.UUID, tokenString string) error 
 
 // DeleteByID ВРЕМЕННО: удаляет refresh token по его ID
 func (dtr *tokenRepo) DeleteByID(tokenID uuid.UUID) error {
-	var token models.RefreshTokens
-	err := dtr.Pool.QueryRow(
+	_, err := dtr.Pool.Exec(
 		context.Background(),
 		"DELETE FROM refresh_tokens WHERE token_id=$1",
 		tokenID,
-	).Scan(&token)
+	)
 
 	if err != nil {
 		logger.Log.Error(

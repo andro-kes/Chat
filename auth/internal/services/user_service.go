@@ -18,8 +18,7 @@ type UserService interface {
 	Login(user *models.User) (*LoginData, error)
 	OAuthLogin(username, email string) (*LoginData, error)
 	Logout(token string) error
-	SignUp()
-	Update()
+	SignUp(user *models.User) (*LoginData, error)
 	SetPassword(user *models.User) error 
 }
 
@@ -127,13 +126,34 @@ func (us *userService) Logout(token string) error {
 }
 
 // SignUp ВРЕМЕННО: заглушка под регистрацию пользователя
-func (us *userService) SignUp() {
+func (us *userService) SignUp(user *models.User) (*LoginData, error) {
+	_, err := us.Repo.FindByEmail(user.Email)
+	if err == nil {
+		return &LoginData{}, errors.New("Пользователь с таким email уже существует")
+	}
 
-}
+	hashPassword, err := utils.GenerateHashPassword(user.Password)
+	if err != nil {
+		logger.Log.Error(
+			"Не удалось хэшировать пароль",
+			zap.Error(err),
+		)
+		return &LoginData{}, err
+	}
+	password := user.Password
+	user.Password = string(hashPassword)
 
-// Update ВРЕМЕННО: заглушка под обновление профиля
-func (us *userService) Update() {
+	err = us.Repo.CreateUser(user)
+	if err != nil {
+		logger.Log.Warn(
+			"Не удалось создать пользователя",
+			zap.Error(err),
+		)
+	}
 
+	user.Password = password
+
+	return us.Login(user)
 }
 
 // SetPassword ВРЕМЕННО: устанавливает пароль через репозиторий

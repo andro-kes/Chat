@@ -6,28 +6,36 @@ package main
 import (
 	"net/http"
 
-	"github.com/andro-kes/Chat/auth/logger"
+	"github.com/andro-kes/Chat/auth/configs"
 	"github.com/andro-kes/Chat/auth/internal/handlers"
+	"github.com/andro-kes/Chat/auth/logger"
+	"go.uber.org/zap"
 )
 
 // main ВРЕМЕННО: регистрация HTTP-роутов и запуск сервера
 func main() {
-	
+	logger.Init()
+	configs.InitConfigs()
+	defer logger.Close()
+
 	authHandlers := handlers.NewAuthHandlers()
 	
-
 	http.HandleFunc("/yandex_auth", authHandlers.AuthYandexHandler)
-	router.GET("/auth", auth.LoginYandexHandler)
+	http.HandleFunc("/auth", authHandlers.LoginYandexHandler)
 
 	http.HandleFunc("/", authHandlers.LoginPageHandler)
 	http.HandleFunc("/api/login", authHandlers.LoginHandler)
 	
-	router.GET("/signup_page", auth.SignUPPageHandler)
-	router.POST("/api/signup", auth.SignUpHandler)
+	http.HandleFunc("/signup_page", authHandlers.SignUPPageHandler)
+	http.HandleFunc("/api/signup", authHandlers.SignUpHandler)
 
-	router.POST("/logout", auth.LogoutHandler)
+	http.HandleFunc("/api/logout", authHandlers.LogoutHandler)
 
-	router.PATCH("/api/update", auth.UpdateUser)
-
-	router.Run(":8000")
+	err := http.ListenAndServe("localhost:8000", nil)
+	if err != nil {
+		logger.Log.Fatal(
+			"Не удалось запустить сервер",
+			zap.Error(err),
+		)
+	}
 }

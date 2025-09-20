@@ -36,14 +36,14 @@ func (dur *DBUserRepo) FindByEmail(email string) (*models.User, error) {
 	var user models.User
 	err := dur.Pool.QueryRow(
 		context.Background(), 
-		"SELECT * FROM users WHERE email=$1",
+		"SELECT id, created_at, updated_at, deleted_at, username, email, password FROM users WHERE email=$1",
 		email,
-	).Scan(&user)
+	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt, &user.Username, &user.Email, &user.Password)
 
 	if err != nil {
 		logger.Log.Warn(
 			"Пользователь не найден",
-			zap.String("email", user.Email),
+			zap.String("email", email),
 			zap.Error(err),
 		)
 	}

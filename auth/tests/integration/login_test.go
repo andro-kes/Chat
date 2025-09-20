@@ -3,9 +3,7 @@ package auth_tests
 import (
 	"bytes"
 
-	"github.com/andro-kes/Chat/auth/internal/handlers"
 	"github.com/andro-kes/Chat/auth/internal/models"
-	"github.com/andro-kes/Chat/auth/internal/utils"
 
 	"github.com/stretchr/testify/assert"
 
@@ -16,10 +14,8 @@ import (
 )
 
 func TestAPILogin(t *testing.T) {
-	authHandlers := NewAuthHandlers()
+	authHandlers := SetUp(t)
 	http.HandleFunc("/api/login", authHandlers.LoginHandler)
-	
-	pool := SetUp(t)
 	
 	user := models.User{
 		Email: "testemail",
@@ -27,13 +23,11 @@ func TestAPILogin(t *testing.T) {
 	}
 	jsonUser, err := json.Marshal(user)
 	assert.NoError(t, err)
+	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/api/login", bytes.NewBuffer(jsonUser))
 	assert.NoError(t, err)
 	
-	client := &http.Client{}
-	resp, err := client.Do(r)
-	assert.NoError(t, err)
-	defer resp.Body.Close()
+	authHandlers.LoginHandler(w, r)
 	
-	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, 200, w.Code)
 }
