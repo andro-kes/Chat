@@ -1,7 +1,6 @@
 package services
 
 import (
-	"errors"
 	"net/http"
 	"os"
 	"time"
@@ -16,7 +15,7 @@ import (
 type TokenService interface {
 	GenerateRefreshToken(userId uuid.UUID) (string, error)
 	GenerateAccessToken(userId uuid.UUID) (string, error)
-	RevokeRefreshToken(tokenID uuid.UUID)
+	RevokeRefreshToken(userID uuid.UUID) error
 	ParseRefreshToken(tokenString string) (string, error)
 }
 
@@ -94,8 +93,8 @@ func (token *tokenService) GenerateAccessToken(userId uuid.UUID) (string, error)
 	return tokenString, err
 }
 
-func (token *tokenService) RevokeRefreshToken(tokenID uuid.UUID) {
-
+func (token *tokenService) RevokeRefreshToken(userID uuid.UUID) error {
+	return token.TokenRepo.DeleteByID(userID)
 }
 
 func (token *tokenService) GetTokenCookie(r *http.Request, name string) (string, error) {
@@ -123,14 +122,8 @@ func (token *tokenService) ParseRefreshToken(tokenString string) (string, error)
 		)
 		return "", err
 	}
+	
+	claims := parsedToken.Claims
 
-	claims, ok := parsedToken.Claims.(jwt.RegisteredClaims)
-	if !ok {
-		logger.Log.Warn(
-			"Невалидные claims для refresh token",
-		)
-		return "", errors.New("Невалидные claims")
-	}
-
-	return claims.ID, nil
+	return claims.GetSubject()
 }

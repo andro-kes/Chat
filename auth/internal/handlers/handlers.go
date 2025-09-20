@@ -284,7 +284,13 @@ func (ah *AuthHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ah.UserService.Logout(cookie.Value)
+	err = ah.UserService.Logout(cookie.Value)
+	if err != nil {
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Не удалось выйти из системы",
+		})
+		return
+	}
 
 	cookie = &http.Cookie{
         Name:   "refresh_token",

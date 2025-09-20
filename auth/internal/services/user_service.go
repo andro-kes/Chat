@@ -106,12 +106,12 @@ func (us *userService) OAuthLogin(username, email string) (*LoginData, error) {
 
 // Logout ВРЕМЕННО: парсит refresh token, получает его uuid и отзывает в хранилище
 func (us *userService) Logout(token string) error {
-	tokenStringID, err := us.TokenService.ParseRefreshToken(token)
+	userStringID, err := us.TokenService.ParseRefreshToken(token)
 	if err != nil {
 		return err
 	}
 
-	tokenID, err := uuid.Parse(tokenStringID)
+	userId, err := uuid.Parse(userStringID)
 	if err != nil {
 		logger.Log.Error(
 			"Неверный ID для refresh token",
@@ -120,9 +120,7 @@ func (us *userService) Logout(token string) error {
 		return err
 	}
 
-	err = us.TokenService.(*tokenService).TokenRepo.DeleteByID(tokenID)
-	
-	return err
+	return us.TokenService.RevokeRefreshToken(userId)
 }
 
 // SignUp ВРЕМЕННО: заглушка под регистрацию пользователя

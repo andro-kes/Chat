@@ -1,78 +1,60 @@
 package auth_tests
 
-// import (
-// 	"bytes"
-// 	"encoding/json"
+import (
+	"bytes"
+	"encoding/json"
 
-	
-// 	"github.com/andro-kes/Chat/auth/internal/utils"
+	"github.com/andro-kes/Chat/auth/internal/models"
 
-	
-// 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/assert"
 
-// 	"net/http"
-// 	"net/http/httptest"
-// 	"testing"
-// )
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
-// func TestLogoutHandler(t *testing.T) {
-// 	router := SetUpTestRouter()
-// 	router.POST("/api/login", auth.LoginHandler)
+func TestLogoutHandler(t *testing.T) {
+	authHandlers := SetUp(t)
+	http.HandleFunc("/api/logout/", authHandlers.LogoutHandler)
 
-// 	db := utils.GetTestDB()
-// 	tx := db.Begin()
-// 	defer tx.Rollback()
+	user := models.User{
+		Email: "testemail",
+		Password: "testpassword",
+	}
+	jsonUser, err := json.Marshal(user)
+	assert.NoError(t, err)
+	w := httptest.NewRecorder()
+	r, err := http.NewRequest("POST", "/api/login", bytes.NewBuffer(jsonUser))
+	assert.NoError(t, err)
+	authHandlers.LoginHandler(w, r)
+	assert.Equal(t, 200, w.Code)
 
-// 	router.Use(func(c *gin.Context) {
-//         c.Set("DB", tx)
-//         c.Next()
-//     })
+	cookies := w.Result().Cookies()
+	cookiesSet := make(map[string]*http.Cookie)
+	for _, cookie := range cookies {
+		cookiesSet[cookie.Name] = cookie
+	}
+	_, ok := cookiesSet["access_token"]
+	assert.True(t, ok)
+	_, ok = cookiesSet["refresh_token"]
+	assert.True(t, ok)
 
-// 	user := models.User{
-// 		Email: "testemail",
-// 		Password: "testpassword",
-// 	}
-// 	jsonUser, err := json.Marshal(user)
-// 	assert.NoError(t, err)
-// 	w := httptest.NewRecorder()
-// 	req, err := http.NewRequest("POST", "/api/login", bytes.NewBuffer(jsonUser))
-// 	assert.NoError(t, err)
-// 	router.ServeHTTP(w, req)
-// 	assert.Equal(t, 200, w.Code)
-// 	cookies := w.Result().Cookies()
+	W := httptest.NewRecorder()
+	R, err := http.NewRequest("POST", "/api/logout", nil)
+	assert.NoError(t, err)
+	R.AddCookie(cookiesSet["access_token"])
+	R.AddCookie(cookiesSet["refresh_token"])
+	authHandlers.LogoutHandler(W, R)
 
-// 	router.POST("/logout", auth.LogoutHandler)
-// 	w = httptest.NewRecorder()
-// 	req, err = http.NewRequest("POST", "/logout", nil)
-// 	assert.NoError(t, err)
+	assert.Equal(t, 200, W.Code)
 
-// 	for _, cookie := range cookies {
-// 		req.AddCookie(cookie)
-// 	}
-
-// 	c := gin.CreateTestContextOnly(w, router)
-// 	c.Request = req
-	
-// 	router.ServeHTTP(w, req)
-// 	assert.Equal(t, 200, w.Code)
-
-// 	cookies = w.Result().Cookies()
-// 	var (
-// 		token string
-// 		refresh_token string
-// 	)
-// 	for _, cookie := range cookies {
-// 		if cookie.Name == "token" {
-// 			token = cookie.Value
-// 		}
-// 		if cookie.Name == "refresh_token" {
-// 			refresh_token = cookie.Value
-// 		}
-// 	}
-// 	assert.Empty(t, token)
-// 	assert.Empty(t, refresh_token)
-
-// 	var RefreshToken models.RefreshTokens
-// 	tx.Where("user_id = ?", uint(1)).First(&RefreshToken)
-// 	assert.Equal(t, "", RefreshToken.Token)
-// }
+	cookies = W.Result().Cookies()
+	logoutCookies := make(map[string]string)
+	for _, cookie := range cookies {
+		logoutCookies[cookie.Name] = cookie.Value
+	}
+	val, ok := logoutCookies["access_token"]
+	assert.Equal(t, "", val)
+	val, ok = logoutCookies["refresh_token"]
+	assert.Equal(t, "", val)
+}

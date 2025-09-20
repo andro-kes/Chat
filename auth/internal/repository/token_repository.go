@@ -45,11 +45,11 @@ func (dtr *tokenRepo) Save(userId, tokenId uuid.UUID, tokenString string) error 
 }
 
 // DeleteByID ВРЕМЕННО: удаляет refresh token по его ID
-func (dtr *tokenRepo) DeleteByID(tokenID uuid.UUID) error {
+func (dtr *tokenRepo) DeleteByID(userID uuid.UUID) error {
 	_, err := dtr.Pool.Exec(
 		context.Background(),
-		"DELETE FROM refresh_tokens WHERE token_id=$1",
-		tokenID,
+		"DELETE FROM refresh_tokens WHERE user_id=$1",
+		userID,
 	)
 
 	if err != nil {

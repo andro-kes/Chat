@@ -30,4 +30,14 @@ func TestAPILogin(t *testing.T) {
 	authHandlers.LoginHandler(w, r)
 	
 	assert.Equal(t, 200, w.Code)
+
+	cookies := w.Result().Cookies()
+	cookiesSet := make(map[string]*http.Cookie)
+	for _, cookie := range cookies {
+		cookiesSet[cookie.Name] = cookie
+	}
+	_, ok := cookiesSet["access_token"]
+	assert.True(t, ok)
+	_, ok = cookiesSet["refresh_token"]
+	assert.True(t, ok)
 }

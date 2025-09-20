@@ -29,6 +29,7 @@ func createTestPool(t *testing.T) *pgxpool.Pool {
             "POSTGRES_USER":     "testuser",
             "POSTGRES_PASSWORD": "testpass",
             "POSTGRES_DB":       "testdb",
+			"SECRET_KEY":        "secretkey",
         },
         WaitingFor: wait.ForSQL("5432/tcp", "pgx", func(host string, port nat.Port) string {
             return fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, port.Port())
