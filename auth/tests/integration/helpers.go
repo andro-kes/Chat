@@ -8,12 +8,10 @@ import (
 
 	"github.com/andro-kes/Chat/auth/internal/database"
 	"github.com/andro-kes/Chat/auth/internal/handlers"
-	"github.com/andro-kes/Chat/auth/internal/utils"
 	"github.com/andro-kes/Chat/auth/logger"
 	"github.com/docker/go-connections/nat"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"go.uber.org/zap"
@@ -29,7 +27,6 @@ func createTestPool(t *testing.T) *pgxpool.Pool {
             "POSTGRES_USER":     "testuser",
             "POSTGRES_PASSWORD": "testpass",
             "POSTGRES_DB":       "testdb",
-			"SECRET_KEY":        "secretkey",
         },
         WaitingFor: wait.ForSQL("5432/tcp", "pgx", func(host string, port nat.Port) string {
             return fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, port.Port())
@@ -78,18 +75,15 @@ func makeMigrations(t *testing.T, pool *pgxpool.Pool) {
 	fixtures := []string{
 		`CREATE TABLE users(
 			id UUID PRIMARY KEY,
-			created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMP,
-			deleted_at TIMESTAMP,
-			username VARCHAR(255),
-			email VARCHAR(255),
-			password VARCHAR(255)
+			username VARCHAR(50),
+			email VARCHAR(50),
+			password VARCHAR(50)
 		)
 		`,
-		`CREATE TABLE refresh_tokens(
-			user_id UUID NOT NULL,
+		`CREATE TABLE tokens(
 			token_id UUID PRIMARY KEY,
-			token VARCHAR(500) NOT NULL
+			user_id UUID,
+			token VARCHAR(100)
 		)
 		`,
 	}
@@ -112,21 +106,12 @@ func makeMigrations(t *testing.T, pool *pgxpool.Pool) {
 func createTestUser(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 
-	// Хешируем пароль для тестового пользователя
-	hashedPassword, err := utils.GenerateHashPassword("testpassword")
-	if err != nil {
-		logger.Log.Fatal(
-			"Не удалось хешировать пароль для тестового пользователя",
-			zap.Error(err),
-		)
-	}
-
 	sql := "INSERT INTO users (id, username, email, password) VALUES ($1, $2, $3, $4)"
 	
-	_, err = pool.Exec(
+	_, err := pool.Exec(
 		t.Context(),
 		sql,
-		uuid.New(), "testuser", "testemail", string(hashedPassword),
+		uuid.New(), "testuser", "testemail", "testpassword",
 	)
 	if err != nil {
 		logger.Log.Fatal(
