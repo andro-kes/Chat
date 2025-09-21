@@ -74,21 +74,21 @@ func (dur *DBUserRepo) CreateUser(user *models.User) error {
 		return err
 	}
 
-	var newUser models.User
-	err = dur.Pool.QueryRow(
+	_, err = dur.Pool.Exec(
 		context.Background(),
 		query,
 		id, time.Now(), nil, nil, user.Username, user.Email, user.Password,
-	).Scan(&newUser)
+	)
 
 	if err != nil {
 		logger.Log.Error(
 			"Не удалось создать пользователя",
 			zap.Error(err),
 		)
+		return err
 	}
 
-	return err
+	return nil
 }
 
 

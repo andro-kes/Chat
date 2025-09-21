@@ -13,9 +13,8 @@ import (
 	"testing"
 )
 
-func TestLogoutHandler(t *testing.T) {
+func TestAPILogout(t *testing.T) {
 	authHandlers := SetUp(t)
-	http.HandleFunc("/api/logout/", authHandlers.LogoutHandler)
 
 	user := models.User{
 		Email: "testemail",

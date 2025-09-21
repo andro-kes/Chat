@@ -20,6 +20,7 @@ type UserService interface {
 	Logout(token string) error
 	SignUp(user *models.User) (*LoginData, error)
 	SetPassword(user *models.User) error 
+	GetUserByEmail(email string) (*models.User, error)
 }
 
 type userService struct {
@@ -143,10 +144,7 @@ func (us *userService) SignUp(user *models.User) (*LoginData, error) {
 
 	err = us.Repo.CreateUser(user)
 	if err != nil {
-		logger.Log.Warn(
-			"Не удалось создать пользователя",
-			zap.Error(err),
-		)
+		return &LoginData{}, err
 	}
 
 	user.Password = password
@@ -157,4 +155,8 @@ func (us *userService) SignUp(user *models.User) (*LoginData, error) {
 // SetPassword ВРЕМЕННО: устанавливает пароль через репозиторий
 func (us *userService) SetPassword(user *models.User) error {
 	return us.Repo.SetPassword(user)
+}
+
+func (us *userService) GetUserByEmail(email string) (*models.User, error) {
+	return us.Repo.FindByEmail(email)
 }

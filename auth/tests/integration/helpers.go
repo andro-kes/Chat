@@ -81,8 +81,8 @@ func makeMigrations(t *testing.T, pool *pgxpool.Pool) {
 			created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMP,
 			deleted_at TIMESTAMP,
-			username VARCHAR(50),
-			email VARCHAR(50),
+			username VARCHAR(255),
+			email VARCHAR(255),
 			password VARCHAR(255)
 		)
 		`,

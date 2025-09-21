@@ -15,7 +15,6 @@ import (
 
 func TestAPILogin(t *testing.T) {
 	authHandlers := SetUp(t)
-	http.HandleFunc("/api/login", authHandlers.LoginHandler)
 	
 	user := models.User{
 		Email: "testemail",
