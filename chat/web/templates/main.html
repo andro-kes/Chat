@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Мои комнаты</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline';">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, sans-serif;
@@ -60,6 +61,7 @@
     </style>
 </head>
 <body>
+    <!-- Обмен токенов перенесен на сервер: JS-установка кук больше не требуется -->
     <!-- Блок пользователя -->
     <div class="user-panel">
         <div class="user-name">{{.UserName}}</div>

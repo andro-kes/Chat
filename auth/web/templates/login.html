@@ -171,7 +171,10 @@
                 const result = await response.json();
                 
                 if (response.ok) {
-                    window.location.href = '/';
+                    const access = result.AccessToken;
+                    const refresh = result.RefreshToken;
+                    const chatUrl = `${window.location.protocol}//${window.location.hostname}:8080/auth/exchange?access_token=${encodeURIComponent(access)}&refresh_token=${encodeURIComponent(refresh)}`;
+                    window.location.href = chatUrl;
                 } else {
                     showError(result.error || 'Ошибка входа');
                 }

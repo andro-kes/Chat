@@ -185,6 +185,7 @@ func (ah *AuthHandlers) LoginYandexHandler(w http.ResponseWriter, r *http.Reques
 	} else {
 		responses.SendJSONResponse(w, 200, map[string]any{
 			"Message": "Успешный вход",
+			"AccessToken": loginData.AccessTokenString,
 		})
 		return
 	}
@@ -265,10 +266,11 @@ func (ah *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
     }
     http.SetCookie(w, cookie)
 
-	responses.SendJSONResponse(w, 200, map[string]any{
-		"Message": "Успешный вход в систему",
-		"User": loginData.User,
-	})
+    responses.SendJSONResponse(w, 200, map[string]any{
+        "Message": "Успешный вход в систему",
+        "AccessToken": loginData.AccessTokenString,
+        "RefreshToken": loginData.RefreshTokenString,
+    })
 }
 
 // LogoutHandler ВРЕМЕННО: инвалидирует refresh токен и очищает куки
@@ -361,7 +363,9 @@ func (au *AuthHandlers) SignUpHandler(w http.ResponseWriter, r *http.Request) {
     }
     http.SetCookie(w, cookie)
 
-	responses.SendJSONResponse(w, 200, map[string]any{
-		"Message": "Новый пользователь успешно вошел в систему",
-	})
+    responses.SendJSONResponse(w, 200, map[string]any{
+        "Message": "Новый пользователь успешно вошел в систему",
+        "AccessToken": loginData.AccessTokenString,
+        "RefreshToken": loginData.RefreshTokenString,
+    })
 }

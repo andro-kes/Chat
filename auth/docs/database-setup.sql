@@ -105,3 +105,6 @@ WHERE tablename IN ('users', 'refresh_tokens');
 SELECT grantee, privilege_type 
 FROM information_schema.role_table_grants 
 WHERE table_name IN ('users', 'refresh_tokens');
+
+
+

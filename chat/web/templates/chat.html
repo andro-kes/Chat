@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat Room</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline';">
     <style>
         :root {
             --primary-dark: #30393E;
@@ -197,6 +198,7 @@
     </style>
 </head>
 <body>
+    <!-- Куки выставляются сервером на /auth/exchange; JS-установка удалена -->
     <div class="chat-header">
         <button class="back-btn" id="backBtn">← Назад</button>
         <h2 class="chat-title" id="roomTitle">Комната</h2>
@@ -239,7 +241,8 @@
             // WebSocket соединение
             let socket;
             try {
-                socket = new WebSocket(`ws://${window.location.host}/${roomId}/ws`);
+                const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+                socket = new WebSocket(`${wsProto}://${window.location.host}/${roomId}/ws`);
             } catch (error) {
                 console.error('WebSocket error:', error);
                 showError('Не удалось подключиться к чату');

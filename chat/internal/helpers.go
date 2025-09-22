@@ -2,6 +2,8 @@ package chat
 
 import (
 	"log"
+    "net/http"
+    "time"
 
 	"github.com/andro-kes/Chat/shared/middlewares"
 	"github.com/andro-kes/Chat/shared/models"
@@ -36,4 +38,28 @@ func getCurrentUser(c *gin.Context) models.User {
 	}
 
 	return currentUser
+}
+
+// setAuthCookies устанавливает HttpOnly куки для access и refresh токенов
+func setAuthCookies(c *gin.Context, accessToken string, refreshToken string) {
+    secure := c.Request.TLS != nil
+    http.SetCookie(c.Writer, &http.Cookie{
+        Name:     "access_token",
+        Value:    accessToken,
+        Path:     "/",
+        HttpOnly: true,
+        Secure:   secure,
+        SameSite: http.SameSiteStrictMode,
+        Expires:  time.Now().Add(15 * time.Minute),
+    })
+
+    http.SetCookie(c.Writer, &http.Cookie{
+        Name:     "refresh_token",
+        Value:    refreshToken,
+        Path:     "/",
+        HttpOnly: true,
+        Secure:   secure,
+        SameSite: http.SameSiteStrictMode,
+        Expires:  time.Now().Add(7 * 24 * time.Hour),
+    })
 }

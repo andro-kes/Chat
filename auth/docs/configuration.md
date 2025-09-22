@@ -393,3 +393,6 @@ docker stats
 # Логи производительности
 docker-compose logs auth | grep -E "(slow|timeout|error)"
 ```
+
+
+

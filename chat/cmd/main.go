@@ -11,17 +11,24 @@ import (
 // main ВРЕМЕННО: инициализирует gin, подключает middlewares и регистрирует роуты
 func main() {
 	router := gin.Default()
-	router.Use(middlewares.DBMiddleWare())
-	router.Use(middlewares.IsAuthMiddleware())
+    router.Use(middlewares.DBMiddleWare())
 	router.LoadHTMLGlob("/app/web/templates/*")
 
-	router.GET("/", chat.MainPageHandler)
-	router.GET("/api/rooms", chat.GetUserRooms)
-	router.GET("/:id", chat.ChatPageHandler)
-	router.GET("/api/room/:id/messages", chat.GetRoomMessages)
-	router.GET("/:id/ws", chat.ChatHandler)
-	router.POST("/create_room", chat.CreateRoom)
-	router.POST("/api/:id/add_user", chat.AddUserToRoom)
+    // Публичный endpoint для обмена токенов на серверные HttpOnly куки
+    router.GET("/auth/exchange", chat.AuthExchangeHandler)
+
+    // Защищенные маршруты
+    auth := router.Group("/")
+    auth.Use(middlewares.IsAuthMiddleware())
+    {
+        auth.GET("/", chat.MainPageHandler)
+        auth.GET("/api/rooms", chat.GetUserRooms)
+        auth.GET("/:id", chat.ChatPageHandler)
+        auth.GET("/api/room/:id/messages", chat.GetRoomMessages)
+        auth.GET("/:id/ws", chat.ChatHandler)
+        auth.POST("/create_room", chat.CreateRoom)
+        auth.POST("/api/:id/add_user", chat.AddUserToRoom)
+    }
 
 	router.Run(":8080")
 }
