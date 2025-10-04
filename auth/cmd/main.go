@@ -8,6 +8,7 @@ import (
 
 	"github.com/andro-kes/Chat/auth/configs"
 	"github.com/andro-kes/Chat/auth/internal/handlers"
+	"github.com/andro-kes/Chat/auth/internal/middlewares"
 	"github.com/andro-kes/Chat/auth/logger"
 	"go.uber.org/zap"
 )
@@ -19,19 +20,23 @@ func main() {
 	defer logger.Close()
 
 	authHandlers := handlers.NewAuthHandlers()
+	authMiddlewares := middlewares.NewAuthMiddlewares()
+
+	mux := http.NewServeMux()
 	
-	http.HandleFunc("/yandex_auth", authHandlers.AuthYandexHandler)
-	http.HandleFunc("/auth", authHandlers.LoginYandexHandler)
+	mux.HandleFunc("/yandex_auth", authHandlers.AuthYandexHandler)
+	mux.HandleFunc("/auth", authHandlers.LoginYandexHandler)
 
-	http.HandleFunc("/", authHandlers.LoginPageHandler)
-	http.HandleFunc("/api/login", authHandlers.LoginHandler)
+	mux.HandleFunc("/", authHandlers.LoginPageHandler)
+	mux.HandleFunc("/api/login", authHandlers.LoginHandler)
 	
-	http.HandleFunc("/signup_page", authHandlers.SignUPPageHandler)
-	http.HandleFunc("/api/signup", authHandlers.SignUpHandler)
+	mux.HandleFunc("/signup_page", authHandlers.SignUPPageHandler)
+	mux.HandleFunc("/api/signup", authHandlers.SignUpHandler)
 
-	http.HandleFunc("/api/logout", authHandlers.LogoutHandler)
+	logoutHandler := authMiddlewares.AuthMiddleware(http.HandlerFunc(authHandlers.LogoutHandler))
+	mux.Handle("/api/logout", logoutHandler)
 
-	err := http.ListenAndServe("localhost:8000", nil)
+	err := http.ListenAndServe("localhost:8000", mux)
 	if err != nil {
 		logger.Log.Fatal(
 			"Не удалось запустить сервер",

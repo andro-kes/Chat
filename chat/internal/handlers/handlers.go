@@ -5,13 +5,25 @@ import (
 	"strconv"
 
 	"github.com/andro-kes/Chat/chat/internal/models"
+	"github.com/andro-kes/Chat/chat/internal/services"
 	"github.com/andro-kes/Chat/chat/logger"
 	"github.com/andro-kes/Chat/chat/responses"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
-func ChatHandler(w http.ResponseWriter, r *http.Request) {
+type ChatHandlers struct {
+	ChatService services.ChatService
+}
+
+func NewChatHandlers() *ChatHandlers {
+	return &ChatHandlers{
+		ChatService: services.NewChatService(),
+	}
+}
+
+func (*ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin:     func(r *http.Request) bool { return true },
 		ReadBufferSize:  1024,
@@ -61,31 +73,29 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-
+		
 	}
 }
 
 
-func ChatPageHandler(c *gin.Context) {
-	id := c.Param("id")
-	roomID, err := strconv.ParseUint(id, 10, 64)
+func (ch *ChatHandlers) ChatPageHandler(w http.ResponseWriter, r *http.Request) {
+	url := r.URL
+	query := url.Query()
+	id := query.Get("id")
+	roomID, err := uuid.Parse(id)
 	if err != nil {
-		c.JSON(500, gin.H{
-			"ChatPageHandler": "Неверный формат ID комнаты",
-			"error": err.Error(),
+		logger.Log.Error(
+			"Не удалось спарсить id комнаты",
+			zap.Any("id", roomID),
+			zap.Error(err),
+		)
+		responses.SendJSONResponse(w, 500, map[string]any{
+			"Error": "Неверный идентификатор комнаты",
 		})
 		return
 	}
 
-	currentRoom, err := getCurrentRoom(id)
-	if err != nil {
-		c.JSON(404, gin.H{
-			"ChatPageHandler": "Такой комнаты не существует",
-			"error": err.Error(),
-		})
-		return
-	}
-	log.Println("Вход в комнату:", currentRoom.Name)
+	room, err := ch.ChatService.GetCurrentRoom(roomID)
 
 	currentUser := getCurrentUser(c)
 	if !CheckAccess(&currentRoom, &currentUser) {
@@ -109,7 +119,7 @@ func ChatPageHandler(c *gin.Context) {
 }
 
 
-func CreateRoom(c *gin.Context) {
+func (*ChatHandlers) CreateRoom(c *gin.Context) {
 	currentUser := getCurrentUser(c)
 	var roomName RoomName
 	if err := c.ShouldBindBodyWithJSON(&roomName); err != nil {
@@ -139,7 +149,7 @@ func CreateRoom(c *gin.Context) {
 }
 
 
-func GetRoomMessages(c *gin.Context) {
+func (*ChatHandlers) GetRoomMessages(c *gin.Context) {
 	var messages []models.Message
 	obj := middlewares.DB.Where("room_id = ?", c.Param("id")).
 		Preload("Sender").
@@ -156,7 +166,7 @@ func GetRoomMessages(c *gin.Context) {
 }
 
 
-func GetUserRooms(c *gin.Context) {
+func (*ChatHandlers)  GetUserRooms(c *gin.Context) {
 	currentUser := getCurrentUser(c)
 	log.Println("Получение комнат для", currentUser.Username)
     
@@ -186,7 +196,7 @@ func GetUserRooms(c *gin.Context) {
 }
 
 
-func MainPageHandler(c *gin.Context) {
+func (*ChatHandlers)  MainPageHandler(c *gin.Context) {
 	user := getCurrentUser(c)
 	log.Println("Вход на главную страницу", user.Username)
 	c.HTML(200, "main.html", gin.H{

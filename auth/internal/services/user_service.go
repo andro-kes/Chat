@@ -107,15 +107,15 @@ func (us *userService) OAuthLogin(username, email string) (*LoginData, error) {
 
 // Logout ВРЕМЕННО: парсит refresh token, получает его uuid и отзывает в хранилище
 func (us *userService) Logout(token string) error {
-	userStringID, err := us.TokenService.ParseRefreshToken(token)
+	id, err := us.TokenService.ParseRefreshToken(token)
 	if err != nil {
 		return err
 	}
 
-	userId, err := uuid.Parse(userStringID)
+	userId, err := uuid.Parse(id)
 	if err != nil {
 		logger.Log.Error(
-			"Неверный ID для refresh token",
+			"Неверный User ID",
 			zap.Error(err),
 		)
 		return err

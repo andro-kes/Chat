@@ -3,7 +3,9 @@ package auth_tests
 import (
 	"bytes"
 	"encoding/json"
+	"time"
 
+	"github.com/andro-kes/Chat/auth/internal/middlewares"
 	"github.com/andro-kes/Chat/auth/internal/models"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +17,7 @@ import (
 
 func TestAPILogout(t *testing.T) {
 	authHandlers := SetUp(t)
+	authMiddlewares := middlewares.NewAuthMiddlewares()
 
 	user := models.User{
 		Email: "testemail",
@@ -33,17 +36,40 @@ func TestAPILogout(t *testing.T) {
 	for _, cookie := range cookies {
 		cookiesSet[cookie.Name] = cookie
 	}
-	_, ok := cookiesSet["access_token"]
+	accessToken, ok := cookiesSet["access_token"]
 	assert.True(t, ok)
-	_, ok = cookiesSet["refresh_token"]
+	refreshToken, ok := cookiesSet["refresh_token"]
 	assert.True(t, ok)
 
 	W := httptest.NewRecorder()
 	R, err := http.NewRequest("POST", "/api/logout", nil)
 	assert.NoError(t, err)
-	R.AddCookie(cookiesSet["access_token"])
-	R.AddCookie(cookiesSet["refresh_token"])
-	authHandlers.LogoutHandler(W, R)
+	
+	// Создаем куки с правильным временем истечения
+	accessCookie := &http.Cookie{
+		Name:     "access_token",
+		Value:    accessToken.Value,
+		Expires:  time.Now().Add(5 * time.Minute),
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	}
+	refreshCookie := &http.Cookie{
+		Name:     "refresh_token", 
+		Value:    refreshToken.Value,
+		Expires:  time.Now().Add(720 * time.Hour),
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	}
+	
+	R.AddCookie(accessCookie)
+	R.AddCookie(refreshCookie)
+	R.Header.Set("Authentication", accessToken.Value)
+	logout := authMiddlewares.AuthMiddleware(http.HandlerFunc(authHandlers.LogoutHandler))
+	logout.(http.HandlerFunc)(W, R)
 
 	assert.Equal(t, 200, W.Code)
 

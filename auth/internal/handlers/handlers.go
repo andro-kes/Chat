@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/andro-kes/Chat/auth/binding"
 	"github.com/andro-kes/Chat/auth/internal/models"
@@ -248,6 +249,7 @@ func (ah *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	cookie := &http.Cookie{
         Name:     "refresh_token",
+		Expires:  time.Now().Add(720 * time.Hour),
         Value:    loginData.RefreshTokenString,
         Path:     "/",
         HttpOnly: true, // Доступ только через HTTP, защита от XSS
@@ -258,6 +260,7 @@ func (ah *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	cookie = &http.Cookie{
         Name:     "access_token",
+		Expires:  time.Now().Add(5 * time.Minute),
         Value:    loginData.AccessTokenString,
         Path:     "/",
         HttpOnly: true, // Доступ только через HTTP, защита от XSS
@@ -273,7 +276,7 @@ func (ah *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
     })
 }
 
-// LogoutHandler ВРЕМЕННО: инвалидирует refresh токен и очищает куки
+// LogoutHandler: инвалидирует refresh токен и очищает куки
 func (ah *AuthHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
 	if err != nil {
@@ -288,7 +291,7 @@ func (ah *AuthHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = ah.UserService.Logout(cookie.Value)
 	if err != nil {
-		responses.SendJSONResponse(w, 400, map[string]any{
+		responses.SendJSONResponse(w, 500, map[string]any{
 			"Error": "Не удалось выйти из системы",
 		})
 		return
@@ -345,6 +348,7 @@ func (au *AuthHandlers) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	cookie := &http.Cookie{
         Name:     "refresh_token",
+		Expires:  time.Now().Add(720 * time.Hour),
         Value:    loginData.RefreshTokenString,
         Path:     "/",
         HttpOnly: true, // Доступ только через HTTP, защита от XSS
@@ -355,6 +359,7 @@ func (au *AuthHandlers) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	cookie = &http.Cookie{
         Name:     "access_token",
+		Expires:  time.Now().Add(5 * time.Minute),
         Value:    loginData.AccessTokenString,
         Path:     "/",
         HttpOnly: true, // Доступ только через HTTP, защита от XSS

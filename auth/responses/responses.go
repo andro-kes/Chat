@@ -46,14 +46,16 @@ func SendHTMLResponse(w http.ResponseWriter, statusCode int, name string, data m
 	buf.WriteTo(w)
 }
 
-// SendJSONResponse ВРЕМЕННО: отправляет JSON-ответ с указанным статусом
+// SendJSONResponse: отправляет JSON-ответ с указанным статусом
 func SendJSONResponse(w http.ResponseWriter, statusCode int, data map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	err := json.NewEncoder(w).Encode(data)
-	logger.Log.Error(
-		"Не удалось сериализовать ответ",
-		zap.String("service", "auth"),
-		zap.Error(err),
-	)
+	if err != nil {
+		logger.Log.Error(
+			"Не удалось сериализовать ответ",
+			zap.String("service", "auth"),
+			zap.Error(err),
+		)
+	}
 }
