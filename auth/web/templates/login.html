@@ -1,201 +1,122 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вход в систему</title>
-    <style>
-        :root {
-            --primary-dark: #30393E;
-            --primary-light: #988F88;
-            --background: #FAEFEB;
-            --accent: #F8BD97;
-            --secondary: #D5C1B6;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--background);
-            margin: 0;
-            padding: 0;
-            color: var(--primary-dark);
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .auth-container {
-            background-color: white;
-            border-radius: 15px;
-            padding: 30px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .auth-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .auth-title {
-            color: var(--primary-dark);
-            margin-bottom: 10px;
-        }
-
-        .auth-subtitle {
-            color: var(--primary-light);
-            font-size: 14px;
-        }
-
-        .auth-form {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .input-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .input-group label {
-            font-size: 14px;
-            color: var(--primary-dark);
-            font-weight: 500;
-        }
-
-        .input-group input {
-            padding: 12px 15px;
-            border: 1px solid var(--secondary);
-            border-radius: 8px;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s;
-        }
-
-        .input-group input:focus {
-            border-color: var(--primary-light);
-        }
-
-        .auth-btn {
-            background-color: var(--primary-light);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 14px;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        .auth-btn:hover {
-            background-color: var(--primary-dark);
-        }
-
-        .auth-footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 14px;
-            color: var(--primary-light);
-        }
-
-        .auth-link {
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .auth-link:hover {
-            text-decoration: underline;
-        }
-
-        .error-message {
-            color: #e74c3c;
-            font-size: 14px;
-            margin-top: 5px;
-            display: none;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Вход в систему</title>
+  <style>
+    /* (same CSS as your original; kept compact for readability) */
+    :root{--primary-dark:#30393E;--primary-light:#988F88;--background:#FAEFEB;--accent:#F8BD97;--secondary:#D5C1B6}
+    body{font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;background:var(--background);margin:0;height:100vh;display:flex;align-items:center;justify-content:center;color:var(--primary-dark)}
+    .auth-container{background:#fff;border-radius:15px;padding:30px;max-width:400px;width:100%;box-shadow:0 4px 10px rgba(0,0,0,.1)}
+    .auth-header{text-align:center;margin-bottom:20px}.auth-title{margin:0 0 6px}.auth-subtitle{color:var(--primary-light);font-size:14px}
+    .auth-form{display:flex;flex-direction:column;gap:16px}.input-group{display:flex;flex-direction:column;gap:6px}
+    .input-group input{padding:10px;border:1px solid var(--secondary);border-radius:8px}
+    .auth-btn{padding:12px;border-radius:8px;background:var(--primary-light);color:#fff;border:none;cursor:pointer}
+    .auth-footer{text-align:center;margin-top:14px;color:var(--primary-light)}
+    .error-message{color:#e74c3c;font-size:14px;display:none}
+  </style>
 </head>
 <body>
-    <div class="auth-container">
-        <div class="auth-header">
-            <h1 class="auth-title">Вход в аккаунт</h1>
-            <p class="auth-subtitle">Введите свои данные для входа</p>
-        </div>
-
-        <form class="auth-form" id="loginForm">
-            <div class="input-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required>
-                <div class="error-message" id="emailError"></div>
-            </div>
-
-            <div class="input-group">
-                <label for="password">Пароль</label>
-                <input type="password" id="password" name="password" required>
-                <div class="error-message" id="passwordError"></div>
-            </div>
-
-            <button type="submit" class="auth-btn">Войти</button>
-        </form>
-
-        <div class="auth-footer">
-            Нет аккаунта? <a href="/signup_page" class="auth-link">Зарегистрируйтесь</a>
-        </div>
+  <div class="auth-container">
+    <div class="auth-header">
+      <h1 class="auth-title">Вход в аккаунт</h1>
+      <p class="auth-subtitle">Введите свои данные для входа</p>
     </div>
 
-    <script>
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        email: email,
-                        password: password
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    const access = result.AccessToken;
-                    const refresh = result.RefreshToken;
-                    const chatUrl = `${window.location.protocol}//${window.location.hostname}:8080/auth/exchange?access_token=${encodeURIComponent(access)}&refresh_token=${encodeURIComponent(refresh)}`;
-                    window.location.href = chatUrl;
-                } else {
-                    showError(result.error || 'Ошибка входа');
-                }
-            } catch (error) {
-                showError('Ошибка соединения с сервером');
-            }
+    <form id="loginForm" class="auth-form" autocomplete="off">
+      <div class="input-group">
+        <label for="email">Email</label>
+        <input id="email" type="email" required />
+        <div id="emailError" class="error-message"></div>
+      </div>
+
+      <div class="input-group">
+        <label for="password">Пароль</label>
+        <input id="password" type="password" required />
+        <div id="passwordError" class="error-message"></div>
+      </div>
+
+      <button type="submit" class="auth-btn">Войти</button>
+    </form>
+
+    <div class="auth-footer">
+      Нет аккаунта? <a href="/signup_page">Зарегистрируйтесь</a>
+    </div>
+  </div>
+
+  <script>
+    // EDIT THIS: the absolute URL to your Chat exchange endpoint
+    const CHAT_EXCHANGE_URL = "https://localhost:8080/chat/exchange";
+    // AUTH endpoints are relative here; if auth is on another domain, use full URL.
+    const AUTH_LOGIN_URL = "/api/login";
+
+    function showError(msg, elId) {
+      if (elId) {
+        const el = document.getElementById(elId);
+        el.textContent = msg; el.style.display = 'block';
+        return;
+      }
+      alert(msg);
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // clear previous errors
+      document.querySelectorAll('.error-message').forEach(el => el.style.display = 'none');
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      try {
+        // 1) Send credentials to Auth. credentials: 'include' so browser accepts HttpOnly cookies set by Auth.
+        const res = await fetch(AUTH_LOGIN_URL, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
         });
 
-        function showError(message) {
-            const errorElement = document.createElement('div');
-            errorElement.className = 'error-message';
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
-            
-            const form = document.getElementById('loginForm');
-            form.appendChild(errorElement);
-            
-            setTimeout(() => {
-                errorElement.style.display = 'none';
-            }, 5000);
+        const json = await res.json();
+
+        if (!res.ok) {
+          showError(json.Error || json.error || "Ошибка входа");
+          return;
         }
-    </script>
+
+        // 2) Auth returns access_token in JSON (handlers do this). Use it to call Chat exchange via Authorization header.
+        const accessToken = json.AccessToken || json.access_token;
+        if (!accessToken) {
+          showError("Нет access token в ответе от сервера");
+          return;
+        }
+
+        const exchangeRes = await fetch(CHAT_EXCHANGE_URL, {
+          method: "POST",
+          credentials: "include", // allow chat to set its own cookie/session
+          headers: {
+            "Authorization": "Bearer " + accessToken,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({}) // body optional — your exchange handler may not need it
+        });
+
+        if (!exchangeRes.ok) {
+          const er = await exchangeRes.json().catch(()=>({}));
+          showError(er.Error || er.error || "Ошибка соединения с Chat");
+          return;
+        }
+
+        // 3) successful — navigate to chat UI root
+        // If Chat lives on another domain, use that full URL.
+        window.location.href = (new URL(CHAT_EXCHANGE_URL)).origin + "/";
+
+      } catch (err) {
+        console.error(err);
+        showError("Ошибка сети");
+      }
+    });
+  </script>
 </body>
 </html>

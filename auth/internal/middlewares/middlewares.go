@@ -20,6 +20,8 @@ func NewAuthMiddlewares() *authMiddlewares {
 	}
 }
 
+type UserId string
+
 func (am *authMiddlewares) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Log.Info("Проверка на авторизованность пользователя")
@@ -113,8 +115,11 @@ func (am *authMiddlewares) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// own type for adding to context
+		var contextUserId UserId = "user_id"
+
 		logger.Log.Info("Добавление пользователя в контекст")
-		ctx := context.WithValue(r.Context(), "user_id", userID)
+		ctx := context.WithValue(r.Context(), contextUserId, userID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

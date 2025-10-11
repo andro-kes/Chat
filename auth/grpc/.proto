@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package grpc;
+
+option go_package = "github.com/andro-kes/Chat/auth/grpc;grpc";
+
+service AuthService {
+    rpc GetUserId (TokenRequest) returns (UserIdResponse);
+}
+
+message TokenRequest {
+    string token = 1;
+}
+
+message UserIdResponse {
+    string user_id = 1;
+}

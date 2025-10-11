@@ -78,8 +78,8 @@ func TestAPILogout(t *testing.T) {
 	for _, cookie := range cookies {
 		logoutCookies[cookie.Name] = cookie.Value
 	}
-	val, ok := logoutCookies["access_token"]
+	val := logoutCookies["access_token"]
 	assert.Equal(t, "", val)
-	val, ok = logoutCookies["refresh_token"]
+	val = logoutCookies["refresh_token"]
 	assert.Equal(t, "", val)
 }
