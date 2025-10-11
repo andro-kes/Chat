@@ -15,11 +15,13 @@ import (
 
 type ChatHandlers struct {
 	ChatService services.ChatService
+	RoomService services.RoomService
 }
 
 func NewChatHandlers() *ChatHandlers {
 	return &ChatHandlers{
 		ChatService: services.NewChatService(),
+		RoomService: services.NewRoomService(),
 	}
 }
 
@@ -95,13 +97,26 @@ func (ch *ChatHandlers) ChatPageHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	room, err := ch.ChatService.GetCurrentRoom(roomID)
+	currentRoom, err := ch.ChatService.GetCurrentRoom(roomID)
 
-	currentUser := getCurrentUser(c)
-	if !CheckAccess(&currentRoom, &currentUser) {
-		c.JSON(404, gin.H{
-			"ChatPageHandler": "Доступ запрещен",
-			"User": currentUser.Username,
+	user := r.Context().Value("user_id")
+	currentUser, err := uuid.Parse(user.(string))
+	if err != nil {
+		logger.Log.Warn(
+			"Некорректный id пользователя",
+		)
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Invalid User Id",
+		})
+		return
+	}
+
+	if !ch.RoomService.CheckAccess(currentUser) {
+		logger.Log.Warn(
+			"У пользователя нет доступа в эту комнату",
+		)
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Access denied",
 		})
 		return
 	}

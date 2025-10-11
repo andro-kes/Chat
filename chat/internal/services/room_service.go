@@ -7,6 +7,7 @@ import (
 
 type RoomService interface {
 	SendMessage()
+	CheckAccess(userId uuid.UUID) bool
 }
 
 type roomService struct {
@@ -22,4 +23,9 @@ func NewRoomService() *roomService {
 
 func (*roomService) SendMessage() {
 	
+}
+
+func (rs *roomService) CheckAccess(userId uuid.UUID) bool {
+	err := rs.Repo.CheckAccess(userId)
+	return err == nil
 }

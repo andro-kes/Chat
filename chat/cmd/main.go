@@ -5,12 +5,11 @@ import (
 	"net/http"
 
 	"github.com/andro-kes/Chat/chat/internal/handlers"
-	"github.com/andro-kes/Chat/chat/internal/services"
 )
 
 //
 func main() {
 	chatHandlers := handlers.NewChatHandlers()
 
-	http.HandleFunc("/", chatHandlers.)
+	http.HandleFunc("/", chatHandlers.ChatHandler)
 }

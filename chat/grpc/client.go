@@ -8,11 +8,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func Client(token string) string {
+func Client(token string) (string, error) {
 	creds := insecure.NewCredentials()
 	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(creds))
 	if err != nil {
-		return ""
+		return "", err
 	}
 	defer conn.Close()
 
@@ -23,8 +23,8 @@ func Client(token string) string {
 
 	res, err := client.GetUserId(ctx, &TokenRequest{Token: token})
 	if err != nil {
-		return ""
+		return "", err
 	}
 
-	return res.UserId
+	return res.UserId, nil
 }
