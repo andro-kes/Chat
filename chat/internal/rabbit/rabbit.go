@@ -1,8 +1,8 @@
 package rabbit
 
 import (
-	"context"
-	"time"
+	// "context"
+	// "time"
 
 	"github.com/andro-kes/Chat/chat/logger"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -30,16 +30,16 @@ func Init() error {
 	}
 	defer ch.Close()
 
-	q, err := ch.QueueDeclare(
-		"chat", // name
-		false,   // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
-	)	
+	// q, err := ch.QueueDeclare(
+	// 	"chat", // name
+	// 	false,   // durable
+	// 	false,   // delete when unused
+	// 	false,   // exclusive
+	// 	false,   // no-wait
+	// 	nil,     // arguments
+	// )	
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// defer cancel()
+	return nil
 }

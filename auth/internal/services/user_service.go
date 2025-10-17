@@ -90,7 +90,7 @@ func (us *userService) OAuthLogin(username, email string) (*LoginData, error) {
 			Email: email,
 		}
 		us.Repo.CreateUser(newUser)
-		return &LoginData{User: newUser}, errors.New("Пользователь был создан")
+		return &LoginData{User: newUser}, errors.New("пользователь был создан")
 	}
 
 	loginData, err := us.Login(user)
@@ -124,11 +124,11 @@ func (us *userService) Logout(token string) error {
 	return us.TokenService.RevokeRefreshToken(userId)
 }
 
-// SignUp ВРЕМЕННО: заглушка под регистрацию пользователя
+//
 func (us *userService) SignUp(user *models.User) (*LoginData, error) {
 	_, err := us.Repo.FindByEmail(user.Email)
 	if err == nil {
-		return &LoginData{}, errors.New("Пользователь с таким email уже существует")
+		return &LoginData{}, errors.New("пользователь с таким email уже существует")
 	}
 
 	hashPassword, err := utils.GenerateHashPassword(user.Password)

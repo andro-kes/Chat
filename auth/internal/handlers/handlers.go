@@ -318,9 +318,56 @@ func (ah *AuthHandlers) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SignUPPageHandler ВРЕМЕННО: отдает HTML-страницу регистрации
+// SignUPPageHandler: отдает HTML-страницу регистрации
 func (*AuthHandlers) SignUPPageHandler(w http.ResponseWriter, r *http.Request) {
 	responses.SendHTMLResponse(w, 200, "signUp.html", map[string]any{
 		"title": "sign_up_page",
 	})
+}
+
+func (ah *AuthHandlers) SignUpHandler(w http.ResponseWriter, r *http.Request) {
+	var user models.User
+	err := binding.BindUserWithJSON(r, &user)
+	if err != nil {
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": err.Error(),
+		})
+		return
+	}
+
+	loginData, err := ah.UserService.SignUp(&user)
+	if err != nil {
+		responses.SendJSONResponse(w, 400, map[string]any{
+			"Error": "Не удалось создать пользователя",
+		})
+		return
+	}
+
+	cookie := &http.Cookie{
+        Name:     "refresh_token",
+		Expires:  time.Now().Add(720 * time.Hour),
+        Value:    loginData.RefreshTokenString,
+        Path:     "/",
+        HttpOnly: true, // Доступ только через HTTP, защита от XSS
+        Secure:   true, // Только HTTPS
+        SameSite: http.SameSiteStrictMode, // Защита от CSRF
+    }
+    http.SetCookie(w, cookie)
+
+	cookie = &http.Cookie{
+        Name:     "access_token",
+		Expires:  time.Now().Add(5 * time.Minute),
+        Value:    loginData.AccessTokenString,
+        Path:     "/",
+        HttpOnly: true, // Доступ только через HTTP, защита от XSS
+        Secure:   true, // Только HTTPS
+        SameSite: http.SameSiteStrictMode, // Защита от CSRF
+    }
+    http.SetCookie(w, cookie)
+
+    responses.SendJSONResponse(w, 200, map[string]any{
+        "Message": "Успешный вход в систему",
+        "AccessToken": loginData.AccessTokenString,
+        "RefreshToken": loginData.RefreshTokenString,
+    })
 }
