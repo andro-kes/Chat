@@ -4,13 +4,14 @@ import (
 	"context"
 
 	"github.com/andro-kes/Chat/chat/internal/database"
+	"github.com/andro-kes/Chat/chat/internal/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type RoomRepo interface {
 	SaveMessage()
-	CheckAccess(userId uuid.UUID) error
+	GetMessages(roomId uuid.UUID) []models.Message
 }
 
 type roomRepo struct {
@@ -27,13 +28,13 @@ func (rr *roomRepo) SaveMessage() {
 	
 }
 
-func (rr *roomRepo) CheckAccess(userId uuid.UUID) error {
-	var username string
-	err := rr.Pool.QueryRow(
+func (rr *roomRepo) GetMessages(roomId uuid.UUID) []models.Message {
+	var messages []models.Message
+	rr.Pool.QueryRow(
 		context.Background(),
-		"SELECT username FROM users WHERE $1=ANY(users)",
-		userId,
-	).Scan(&username)
+		"SELECT * FROM messages WHERE room_id=$1",
+		roomId,
+	).Scan(&messages)
 
-	return err
+	return messages
 }
