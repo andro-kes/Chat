@@ -1,384 +1,111 @@
-package handlers
+package services
 
 import (
-	"net/http"
+	"encoding/json"
+	"sync"
 
-	"github.com/andro-kes/Chat/chat/binding"
 	"github.com/andro-kes/Chat/chat/internal/models"
-	"github.com/andro-kes/Chat/chat/internal/rabbit"
-	"github.com/andro-kes/Chat/chat/internal/services"
+	"github.com/andro-kes/Chat/chat/internal/repository"
 	"github.com/andro-kes/Chat/chat/logger"
-	"github.com/andro-kes/Chat/chat/responses"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
-type ChatHandlers struct {
-	ChatService services.ChatService
-	RabbitManager rabbit.RabbitManager
+type RoomService interface {
+	SendMessage(msg *models.Message) error
+	AddUser(userID uuid.UUID, conn *websocket.Conn) error
+	RemoveUser(userID uuid.UUID)
+	StartWorkers()
+	GetMessages() ([]models.Message, error)
 }
 
-// NewChatHandlers создает и возвращает новый экземпляр обработчика чата.
-// Обработчик использует сервис для выполнения операций, связанных с чатом (например,
-// отправка/прием сообщений, управление комнатами). Сервис инициализируется через
-// `services.NewChatService()`.
-// Пример использования:
-//   handler := NewChatHandlers()
-func NewChatHandlers() *ChatHandlers {
-	rm, err := rabbit.Init()
-	if err != nil {
-		logger.Log.Fatal(
-			"Не удалось инициализировать очередь сообщений",
-			zap.String("error", err.Error()),
-		)
-	}
-	return &ChatHandlers{
-		ChatService: services.NewChatService(),
-		RabbitManager: rm,
-	}
+type roomService struct {
+	ID        uuid.UUID
+	ActiveUsers map[uuid.UUID]*websocket.Conn
+	Repo      repository.RoomRepo
+	Mu        sync.RWMutex
+	messageChan chan *models.Message
 }
 
-// ChatHandler обрабатывает WebSocket-соединение для чата.
-// 
-// Функция:
-// 1. Устанавливает соединение WebSocket.
-// 2. Извлекает идентификатор комнаты из URL-запроса.
-// 3. В цикле считывает сообщения от клиента и передает отправляет их в очередь.
-// 
-// Параметры:
-//   - w *http.ResponseWriter: Интерфейс для записи HTTP-ответа.
-//   - r *http.Request: HTTP-запрос, содержащий параметр `id` комнаты.
-// 
-// Возвращает:
-//   - 500 Internal Server Error: При ошибке установки соединения.
-//   - 400 Bad Request: При некорректном формате `id` комнаты.
-// 
-// Пример использования:
-//   http.HandleFunc("/chat", ChatHandler)
-func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{
-		CheckOrigin:     func(r *http.Request) bool { return true },
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-	}
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		logger.Log.Error(
-			"Не удалось обновить соединение websocket",
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Не удалось обновить соединение websocket",
-		})
-	}
-	logger.Log.Info("Соединение установлено")
-
-	url := r.URL
-	query := url.Query()
-	id := query.Get("id")
-
-	roomID, err := uuid.Parse(id)
-	if err != nil {
-		logger.Log.Error(
-			"Не удалось спарсить id комнаты",
-			zap.Any("id", roomID),
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Неверный идентификатор комнаты",
-		})
-		return
-	}
-	defer conn.Close()
-
-	for {
-		var message models.Message
-		err := conn.ReadJSON(&message)
-		if err != nil {
-			logger.Log.Warn(
-				"Не удалось считать сообщение",
-				zap.String("error", err.Error()),
-			)
-			return
-		}
-
-		err = ch.RabbitManager.PublishMessage(message)
-		if err != nil {
-			logger.Log.Warn(
-				"Не удалось добавить сообщение в очередь",
-				zap.String("error", err.Error()),
-			)
-			return
-		}
+// NewRoomService создает и возвращает новый экземпляр сервиса управления одной комнатой.
+func NewRoomService(roomId uuid.UUID) *roomService {
+	return &roomService{
+		ID:          roomId,
+		ActiveUsers: make(map[uuid.UUID]*websocket.Conn),
+		Repo:        repository.NewRoomRepo(),
+		messageChan: make(chan *models.Message, 100),
 	}
 }
 
-/*
-The best idea now is refactoring structure of chat
-Can use structure with saving conns and ConnManager, RoomManager, ChatManager
-Something like this:
-- Пользователь подключается через WebSocket → создаётся Connection.
-- Hub.Register <- conn — хаб регистрирует соединение.
-- Пользователь отправляет сообщение → попадает в Hub.Messages.
-- Хаб вызывает RoomManager.Broadcast(roomID, message).
-- Room.Broadcast рассылает сообщение всем Connection.Send.
-- Каждый Connection пишет в свой WebSocket.
+// AddUser добавляет пользователя в комнату
+func (rs *roomService) AddUser(userID uuid.UUID, conn *websocket.Conn) error {
+	rs.Mu.Lock()
+	defer rs.Mu.Unlock()
 
-Summary I have to build new architecture with middleware, channels and structs
-
-And I offer to update docs and comments for i can get this shit in a week or even more
-*/
-
-// ChatPageHandler отдает HTML-страницу чата после проверки доступа.
-// 
-// Функция:
-// 1. Извлекает идентификатор комнаты из URL-запроса.
-// 2. Проверяет, имеет ли пользователь доступ к комнате.
-// 3. Если комната не активна, запускает её.
-// 
-// Параметры:
-//   - w *http.ResponseWriter: Интерфейс для записи HTTP-ответа.
-//   - r *http.Request: HTTP-запрос, содержащий параметр `id` комнаты и контекст пользователя.
-// 
-// Возвращает:
-//   - 200 OK: Если всё прошло успешно, отправляется HTML-страница.
-//   - 400 Bad Request: При некорректном `id` пользователя или комнаты.
-//   - 403 Forbidden: Если у пользователя нет доступа.
-// 
-// Пример использования:
-//   http.HandleFunc("/chat_page", ChatPageHandler)
-func (ch *ChatHandlers) ChatPageHandler(w http.ResponseWriter, r *http.Request) {
-	url := r.URL
-	query := url.Query()
-	id := query.Get("id")
-	roomID, err := uuid.Parse(id)
-	if err != nil {
-		logger.Log.Error(
-			"Не удалось спарсить id комнаты",
-			zap.Any("id", roomID),
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Неверный идентификатор комнаты",
-		})
-		return
+	if _, ok := rs.ActiveUsers[userID]; ok {
+		return nil
 	}
 
-	user := r.Context().Value("user_id")
-	currentUserID, err := uuid.Parse(user.(string))
-	if err != nil {
-		logger.Log.Warn(
-			"Некорректный id пользователя",
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "Invalid User Id",
-		})
-		return
-	}
-
-	if !ch.ChatService.CheckAccess(currentUserID) {
-		logger.Log.Warn(
-			"У пользователя нет доступа в эту комнату",
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "Access denied",
-		})
-		return
-	}
-
-	if !ch.ChatService.IsActive(roomID) {
-		roomService := services.NewRoomService(roomID)
-		ch.ChatService.AddRoom(roomService)
-		roomService.StartWorkers()
-	}
-
-	responses.SendHTMLResponse(w, 200, "chat.html", nil)
+	rs.ActiveUsers[userID] = conn
+	return nil
 }
 
-// helper struct for parsing room name
-type RoomName struct {
-	roomName string
+// RemoveUser удаляет пользователя из комнаты
+func (rs *roomService) RemoveUser(userID uuid.UUID) {
+	rs.Mu.Lock()
+	defer rs.Mu.Unlock()
+	delete(rs.ActiveUsers, userID)
 }
 
-// CreateRoom создает новую комнату для текущего пользователя.
-// 
-// Функция:
-// 1. Извлекает идентификатор пользователя из контекста.
-// 2. Десериализует JSON-запрос с названием комнаты.
-// 3. Создает комнату через сервис.
-// 
-// Параметры:
-//   - w *http.ResponseWriter: Интерфейс для записи HTTP-ответа.
-//   - r *http.Request: HTTP-запрос, содержащий данные комнаты и контекст пользователя.
-// 
-// Возвращает:
-//   - 201 Created: Если комната создана.
-//   - 400 Bad Request: При некорректном `id` пользователя.
-//   - 409 Conflict: Если комната с таким названием уже существует.
-// 
-// Пример использования:
-//   http.HandleFunc("/create_room", CreateRoom)
-func (ch *ChatHandlers) CreateRoom(w http.ResponseWriter, r *http.Request) {
-	// TODO Вынести в отдельную функцию при рефакторинге
-	user := r.Context().Value("user_id")
-	currentUserID, err := uuid.Parse(user.(string))
-	if err != nil {
-		logger.Log.Warn(
-			"Некорректный id пользователя",
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "Invalid User Id",
-		})
-		return
+// SendMessage отправляет сообщение всем участникам комнаты
+func (rs *roomService) SendMessage(msg *models.Message) error {
+	if err := rs.Repo.SaveMessage(msg); err != nil {
+		logger.Log.Error("Не удалось сохранить сообщение", zap.Error(err))
+		return err
 	}
 
-	var roomName RoomName
-	if err := binding.BindWithJSON(r, &roomName); err != nil {
-		logger.Log.Error("Не удалось декодировать данные")
-		responses.SendJSONResponse(w, 404, map[string]any{
-			"Error": "Невалидное название комнаты",
-		})
-	}
-
-	err = ch.ChatService.CreateRoom(roomName.roomName, currentUserID)
-	if err != nil {
-		logger.Log.Warn(
-			"Комната с таким названием уже существует",
-			zap.String("room_name", roomName.roomName),
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "Комната с таким названием уже существует",
-		})
-	}
-
-	responses.SendJSONResponse(w, 301, map[string]any{
-		"Message": "Room was created successfully",
-	})
+	// Отправляем сообщение через канал
+	rs.messageChan <- msg
+	return nil
 }
 
-// GetRoomMessages возвращает список сообщений комнаты.
-// 
-// Функция:
-// 1. Извлекает идентификатор комнаты из URL-запроса.
-// 2. Проверяет, активна ли комната.
-// 3. Возвращает сообщения через сервис.
-// 
-// Параметры:
-//   - w *http.ResponseWriter: Интерфейс для записи HTTP-ответа.
-//   - r *http.Request: HTTP-запрос, содержащий параметр `room_id`.
-// 
-// Возвращает:
-//   - 200 OK: Список сообщений.
-//   - 404 Not Found: Если комната не найдена или не активна.
-// 
-// Пример использования:
-//   http.HandleFunc("/get_messages", GetRoomMessages)
-func (ch *ChatHandlers) GetRoomMessages(w http.ResponseWriter, r *http.Request) {
-	url := r.URL
-	query := url.Query()
-	id := query.Get("room_id")
+// StartWorkers запускает горутины для обработки сообщений
+func (rs *roomService) StartWorkers() {
+	for range 5 { 
+		go func() {
+			for {
+				msg, ok := <-rs.messageChan
+				if !ok {
+					return // Канал закрыт
+				}
 
-	if id == "" {
-		responses.SendJSONResponse(w, 404, map[string]any{
-			"Error": "Невалидный id комнаты",
-		})
-		logger.Log.Warn(
-			"Не удалось спарсить id комнаты",
-		)
-		return
+				body, err := json.Marshal(msg)
+				if err != nil {
+					logger.Log.Error(
+						"Не удалось сериализовать сообщение", 
+						zap.String("error", err.Error()),
+					)
+					continue
+				}
+
+				rs.Mu.RLock()
+				for userID, conn := range rs.ActiveUsers {
+					if err := conn.WriteJSON(body); err != nil {
+						logger.Log.Warn("Не удалось отправить сообщение пользователю",
+							zap.String("user_id", userID.String()),
+							zap.Error(err),
+						)
+						rs.RemoveUser(userID)
+					}
+				}
+				rs.Mu.RUnlock()
+			}
+		}()
 	}
-	
-	roomID, err := uuid.Parse(id)
-	if err != nil {
-		responses.SendJSONResponse(w, 404, map[string]any{
-			"Error": "Невалидный id комнаты",
-		})
-		logger.Log.Warn(
-			"Не удалось спарсить id комнаты",
-			zap.Any("id", roomID),
-			zap.Error(err),
-		)
-	}
-
-	if !ch.ChatService.IsActive(roomID) {
-		responses.SendJSONResponse(w, 404, map[string]any{
-			"Error": "Комната не активна",
-		})
-		logger.Log.Warn(
-			"Комната не активна",
-		)
-		return
-	}
-
-	room, err := ch.ChatService.GetRoom(roomID)
-	if err != nil {
-		responses.SendJSONResponse(w, 404, map[string]any{
-			"Error": "Комната не найдена",
-		})
-		logger.Log.Warn(
-			"Комната не найдена",
-		)
-	}
-
-	messages := room.GetMessages()
-
-	responses.SendJSONResponse(w, 200, map[string]any{
-		"Messages": messages,
-	})
 }
 
-// GetUserRooms возвращает список комнат, к которым имеет доступ текущий пользователь.
-// Извлекает идентификатор пользователя из контекста запроса и вызывает сервис.
-// Отправляет JSON-ответ с массивом комнат.
-func (ch *ChatHandlers) GetUserRooms(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value("user_id")
-	currentUserID, err := uuid.Parse(user.(string))
-	if err != nil {
-		logger.Log.Warn(
-			"Некорректный id пользователя",
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "Invalid User Id",
-		})
-		return
-	}
-    
-	rooms := ch.ChatService.GetUserRooms(currentUserID)
-
-	responses.SendJSONResponse(w, 200, map[string]any{
-		"rooms": rooms,
-	})
-}
-
-// MainPageHandler обрабатывает запрос к главной странице.
-// 
-// Функция извлекает идентификатор пользователя из контекста запроса,
-// проверяет его корректность и отправляет HTML-страницу с данными пользователя.
-// 
-// Параметры:
-//   - w *http.ResponseWriter: Интерфейс для записи HTTP-ответа.
-//   - r *http.Request: HTTP-запрос, содержащий контекст с идентификатором пользователя.
-// 
-// Возвращает:
-//   - 200 OK: Если всё прошло успешно, отправляется HTML-страница с `user_id`.
-//   - 400 Bad Request: Если идентификатор пользователя некорректен.
-// Пример использования:
-//   http.HandleFunc("/", MainPageHandler)
-func (*ChatHandlers)  MainPageHandler(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value("user_id")
-	currentUserID, err := uuid.Parse(user.(string))
-	if err != nil {
-		logger.Log.Warn(
-			"Некорректный id пользователя",
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "Invalid User Id",
-		})
-		return
-	}
-
-	responses.SendHTMLResponse(w, 200, "main.html", map[string]any{
-		"user_id": currentUserID,
-	})
+// GetMessages возвращает список сообщений комнаты
+func (rs *roomService) GetMessages() ([]models.Message, error) {
+	return rs.Repo.GetMessages(rs.ID)
 }

@@ -7,9 +7,12 @@ import (
 	"github.com/andro-kes/Chat/chat/internal/handlers"
 )
 
-//
 func main() {
 	chatHandlers := handlers.NewChatHandlers()
+
+	defer func() {
+		chatHandlers.RabbitManager.Stop()
+	}()
 
 	http.HandleFunc("/", chatHandlers.ChatHandler)
 }

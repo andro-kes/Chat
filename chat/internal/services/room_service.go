@@ -15,7 +15,7 @@ import (
 type RoomService interface {
 	SendMessage(msg *models.Message)
 	StartWorkers()
-	GetMessages() []models.Message
+	GetMessages() ([]models.Message, error)
 }
 
 type roomService struct {
@@ -61,6 +61,6 @@ func (rs *roomService) StartWorkers() {
 	// Обработка сообщений
 }
 
-func (rs *roomService) GetMessages() []models.Message {
+func (rs *roomService) GetMessages() ([]models.Message, error) {
 	return rs.Repo.GetMessages(rs.ID)
 }

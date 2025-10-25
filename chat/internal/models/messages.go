@@ -11,5 +11,5 @@ type Message struct {
 	CreatedAt time.Time
 	SenderID uuid.UUID
 	RoomID uuid.UUID
-	Text string
+	Content string
 }

@@ -3,6 +3,7 @@ package rabbit
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/andro-kes/Chat/chat/internal/models"
 	"github.com/andro-kes/Chat/chat/internal/services"
@@ -14,18 +15,38 @@ import (
 type RabbitManager interface {
 	PublishMessage(msg models.Message) error
 	ConsumeMessages()
+	Stop()
 }
 
 type rabbitManager struct {
+	conn *amqp.Connection
 	ch *amqp.Channel
 	q amqp.Queue
-	chatService services.ChatService
+	ChatService services.ChatService
 }
 
 func Init() (*rabbitManager, error) {
 	var rm rabbitManager
+	var err error
 
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	rm.conn, err = amqp.Dial("amqp://guest:guest@localhost:5672/")
+	var backoff = 1 * time.Second
+	for range 5 {
+		if err == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			time.Sleep(backoff)
+			backoff *= 2
+			rm.conn, err = amqp.Dial("amqp://guest:guest@localhost:5672/")
+		}
+	}
 	if err != nil {
 		logger.Log.Error(
 			"Не удалось установить соединение с очередью",
@@ -34,7 +55,7 @@ func Init() (*rabbitManager, error) {
 		return nil, err
 	}
 
-	rm.ch, err = conn.Channel()
+	rm.ch, err = rm.conn.Channel()
 	if err != nil {
 		logger.Log.Error(
 			"Не удалось создать канал для очереди",
@@ -59,7 +80,10 @@ func Init() (*rabbitManager, error) {
 		return nil, err
 	}
 
-	go rm.ConsumeMessages();
+	// Обработка с помощью пяти воркеров
+	for range 5 {
+		go rm.ConsumeMessages();
+	}
 
 	return &rm, nil
 }
@@ -114,7 +138,7 @@ func (rm *rabbitManager) ConsumeMessages() {
 			continue
 		}
 
-		room, err := rm.chatService.GetRoom(msg.RoomID)
+		room, err := rm.ChatService.GetRoom(msg.RoomID)
 		if err != nil {
 			logger.Log.Error("Неверное id комнаты", zap.Error(err))
 			continue
@@ -123,4 +147,9 @@ func (rm *rabbitManager) ConsumeMessages() {
 
 		logger.Log.Info("Получено сообщение через RabbitMQ", zap.Any("message", msg))
 	}
+}
+
+func (rm *rabbitManager) Stop() {
+	rm.ch.Close()
+	rm.conn.Close()
 }
