@@ -3,6 +3,8 @@ package rabbit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/andro-kes/Chat/chat/internal/models"
@@ -20,8 +22,8 @@ type RabbitManager interface {
 
 type rabbitManager struct {
 	conn *amqp.Connection
-	ch *amqp.Channel
-	q amqp.Queue
+	ch   *amqp.Channel
+	q    amqp.Queue
 	ChatService services.ChatService
 }
 
@@ -32,7 +34,10 @@ func Init() (*rabbitManager, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	rm.conn, err = amqp.Dial("amqp://guest:guest@localhost:5672/")
+	name := os.Getenv("RABBITMQ_USER")
+	password := os.Getenv("RABBITMQ_PASSWORD")
+	conn := fmt.Sprintf("amqp://%s:%s@localhost:5672/", name, password)
+	rm.conn, err = amqp.Dial(conn)
 	var backoff = 1 * time.Second
 	for range 5 {
 		if err == nil {
@@ -44,7 +49,7 @@ func Init() (*rabbitManager, error) {
 		default:
 			time.Sleep(backoff)
 			backoff *= 2
-			rm.conn, err = amqp.Dial("amqp://guest:guest@localhost:5672/")
+			rm.conn, err = amqp.Dial("amqp://andde:androkes@localhost:5672/")
 		}
 	}
 	if err != nil {
@@ -66,12 +71,12 @@ func Init() (*rabbitManager, error) {
 
 	rm.q, err = rm.ch.QueueDeclare(
 		"chat", // name
-		false,   // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
-	)	
+		false,  // durable
+		false,  // delete when unused
+		false,  // exclusive
+		false,  // no-wait
+		nil,    // arguments
+	)
 	if err != nil {
 		logger.Log.Error(
 			"Не удалось создать очередь",
@@ -80,9 +85,8 @@ func Init() (*rabbitManager, error) {
 		return nil, err
 	}
 
-	// Обработка с помощью пяти воркеров
 	for range 5 {
-		go rm.ConsumeMessages();
+		go rm.ConsumeMessages()
 	}
 
 	return &rm, nil

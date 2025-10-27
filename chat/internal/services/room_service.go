@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"sync"
 
 	"github.com/andro-kes/Chat/chat/internal/models"
@@ -13,54 +14,86 @@ import (
 )
 
 type RoomService interface {
-	SendMessage(msg *models.Message)
-	StartWorkers()
+	SendMessage(msg *models.Message) error
+	AddUser(userID uuid.UUID, conn *websocket.Conn) error
+	RemoveUser(userID uuid.UUID) bool
 	GetMessages() ([]models.Message, error)
 }
 
 type roomService struct {
-	ID uuid.UUID
-
-	// ActiveUsers хранит websocket-подключения пользователей в комнате
+	ID        uuid.UUID
 	ActiveUsers map[uuid.UUID]*websocket.Conn
-
-	Repo repository.RoomRepo
-
-	Mu sync.Mutex
+	Repo      repository.RoomRepo
+	Mu        sync.RWMutex
 }
 
 // NewRoomService создает и возвращает новый экземпляр сервиса управления одной комнатой.
-// Сервис использует репозиторий для взаимодействия с хранилищем данных.
-// Пример использования:
-//   service := NewRoomService()
 func NewRoomService(roomId uuid.UUID) *roomService {
 	return &roomService{
-		ID: roomId,
+		ID:          roomId,
 		ActiveUsers: make(map[uuid.UUID]*websocket.Conn),
-		Repo: repository.NewRoomRepo(),
+		Repo:        repository.NewRoomRepo(),
 	}
 }
 
-func (rs *roomService) SendMessage(msg *models.Message) {
+// AddUser добавляет пользователя в комнату
+func (rs *roomService) AddUser(userID uuid.UUID, conn *websocket.Conn) error {
+	rs.Mu.Lock()
+	defer rs.Mu.Unlock()
+
+	if _, ok := rs.ActiveUsers[userID]; ok {
+		return nil
+	}
+
+	rs.ActiveUsers[userID] = conn
+	return nil
+}
+
+// RemoveUser удаляет пользователя из комнаты
+func (rs *roomService) RemoveUser(userID uuid.UUID) bool {
+	rs.Mu.Lock()
+	defer rs.Mu.Unlock()
+	delete(rs.ActiveUsers, userID)
+
+	return len(rs.ActiveUsers) != 0
+}
+
+// SendMessage срассылает сообщение всем пользователям
+func (rs *roomService) SendMessage(msg *models.Message) error {
+	if err := rs.Repo.SaveMessage(msg); err != nil {
+		logger.Log.Error("Не удалось сохранить сообщение", zap.Error(err))
+		return err
+	}
+
 	body, err := json.Marshal(msg)
 	if err != nil {
 		logger.Log.Error(
-			"Не удалось сериализовать сообщение",
+			"Не удалось сериализовать сообщение", 
 			zap.String("error", err.Error()),
 		)
+		return err
 	}
 
-	rs.Mu.Lock()
-	for _, conn := range rs.ActiveUsers {
-		conn.WriteJSON(body)
+	rs.Mu.RLock()
+	for userID, conn := range rs.ActiveUsers {
+		if err := conn.WriteJSON(body); err != nil {
+			logger.Log.Warn("Не удалось отправить сообщение пользователю",
+				zap.String("user_id", userID.String()),
+				zap.Error(err),
+			)
+			ok := rs.RemoveUser(userID)
+			if !ok {
+				rs.Mu.RUnlock()
+				return errors.New("в комнате не осталось активных пользователей")
+			}
+		}
 	}
-	rs.Mu.Unlock()
+	rs.Mu.RUnlock()
+	
+	return nil
 }
 
-func (rs *roomService) StartWorkers() {
-	// Обработка сообщений
-}
-
+// GetMessages возвращает список сообщений комнаты
 func (rs *roomService) GetMessages() ([]models.Message, error) {
 	return rs.Repo.GetMessages(rs.ID)
 }

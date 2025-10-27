@@ -13,6 +13,21 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
+
+  rabbitmq:
+    image: rabbitmq:management
+    ports:
+      - "5672:5672"     
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   auth:
     build:
       context: ./auth
@@ -32,6 +47,7 @@ services:
         - action: sync
           path: ./auth
           target: /app
+
   chat:
     build:
       context: ./chat
@@ -39,11 +55,12 @@ services:
     ports:
       - "8080:8080"
     environment:  
-    
       SECRET_KEY: ${SECRET_KEY}
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_started
     develop:
       watch:
         - action: sync
