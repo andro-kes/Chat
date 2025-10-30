@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// Используем builn-in для совместимости
+// Используем plain string ключ для совместимости с getUser
 type UserId string
-const UserIDContextKey UserId = "user_id"
+const UserIDKey UserId = "user_id"
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +35,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx = context.WithValue(ctx, UserIDContextKey, userId)
+		ctx = context.WithValue(ctx, UserIDKey, userId)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

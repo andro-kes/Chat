@@ -21,13 +21,13 @@ type RabbitManager interface {
 }
 
 type rabbitManager struct {
-	conn *amqp.Connection
-	ch   *amqp.Channel
-	q    amqp.Queue
+	conn        *amqp.Connection
+	ch          *amqp.Channel
+	q           amqp.Queue
 	ChatService services.ChatService
 }
 
-func Init() (*rabbitManager, error) {
+func Init(chatSvc services.ChatService) (*rabbitManager, error) {
 	var rm rabbitManager
 	var err error
 
@@ -36,58 +36,56 @@ func Init() (*rabbitManager, error) {
 
 	name := os.Getenv("RABBITMQ_USER")
 	password := os.Getenv("RABBITMQ_PASSWORD")
-	conn := fmt.Sprintf("amqp://%s:%s@localhost:5672/", name, password)
-	rm.conn, err = amqp.Dial(conn)
-	var backoff = 1 * time.Second
-	for range 5 {
+	addr := os.Getenv("RABBITMQ_ADDR")
+	if addr == "" {
+		addr = "localhost:5672"
+	}
+	connURL := fmt.Sprintf("amqp://%s:%s@%s/", name, password, addr)
+
+	// simple retry/backoff
+	backoff := time.Second
+	for attempts := 0; attempts < 5; attempts++ {
+		rm.conn, err = amqp.Dial(connURL)
 		if err == nil {
 			break
 		}
+		logger.Log.Warn("RabbitMQ dial failed, retrying", zap.Int("attempt", attempts+1), zap.Error(err))
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		default:
-			time.Sleep(backoff)
+		case <-time.After(backoff):
 			backoff *= 2
-			rm.conn, err = amqp.Dial("amqp://andde:androkes@localhost:5672/")
 		}
 	}
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось установить соединение с очередью",
-			zap.String("error", err.Error()),
-		)
+		logger.Log.Error("Не удалось установить соединение с очередью", zap.Error(err))
 		return nil, err
 	}
 
 	rm.ch, err = rm.conn.Channel()
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось создать канал для очереди",
-			zap.String("error", err.Error()),
-		)
+		logger.Log.Error("Не удалось создать канал для очереди", zap.Error(err))
 		return nil, err
 	}
 
+	// durable queue
 	rm.q, err = rm.ch.QueueDeclare(
-		"chat", // name
-		false,  // durable
-		false,  // delete when unused
-		false,  // exclusive
-		false,  // no-wait
-		nil,    // arguments
+		"chat",
+		true,  // durable
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось создать очередь",
-			zap.String("error", err.Error()),
-		)
+		logger.Log.Error("Не удалось создать очередь", zap.Error(err))
 		return nil, err
 	}
 
-	for range 5 {
-		go rm.ConsumeMessages()
-	}
+	rm.ChatService = chatSvc
+
+	// старт consumer в отдельной горутине
+	go rm.ConsumeMessages()
 
 	return &rm, nil
 }
@@ -102,13 +100,14 @@ func (rm *rabbitManager) PublishMessage(msg models.Message) error {
 
 	err = rm.ch.PublishWithContext(
 		context.Background(),
-		"",     // Обменник
-		rm.q.Name, // Имя очереди
-		false,  // Mandatory
-		false,  // Immediate
+		"",        // default exchange
+		rm.q.Name, // routing key
+		false,
+		false,
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,
+			DeliveryMode: amqp.Persistent,
 		},
 	)
 	if err != nil {

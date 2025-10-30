@@ -1,7 +1,6 @@
 package services
 
 import (
-	"encoding/json"
 	"errors"
 	"sync"
 
@@ -18,6 +17,7 @@ type RoomService interface {
 	AddUser(userID uuid.UUID, conn *websocket.Conn) error
 	RemoveUser(userID uuid.UUID) bool
 	GetMessages() ([]models.Message, error)
+	GetId() uuid.UUID
 }
 
 type roomService struct {
@@ -65,35 +65,41 @@ func (rs *roomService) SendMessage(msg *models.Message) error {
 		return err
 	}
 
-	body, err := json.Marshal(msg)
-	if err != nil {
-		logger.Log.Error(
-			"Не удалось сериализовать сообщение", 
-			zap.String("error", err.Error()),
-		)
-		return err
-	}
-
+	// Сериализуем объект сообщения один раз
+	// но при отправке по websocket используем WriteJSON(msg)
+	// чтобы клиент получил структуру
+	// Копируем список подключений под RLock, затем отпускаем замок и пишем
 	rs.Mu.RLock()
-	for userID, conn := range rs.ActiveUsers {
-		if err := conn.WriteJSON(body); err != nil {
+	conns := make([]*websocket.Conn, 0, len(rs.ActiveUsers))
+	userIDs := make([]uuid.UUID, 0, len(rs.ActiveUsers))
+	for uid, c := range rs.ActiveUsers {
+		conns = append(conns, c)
+		userIDs = append(userIDs, uid)
+	}
+	rs.Mu.RUnlock()
+
+	for i, conn := range conns {
+		if err := conn.WriteJSON(msg); err != nil {
 			logger.Log.Warn("Не удалось отправить сообщение пользователю",
-				zap.String("user_id", userID.String()),
+				zap.String("user_id", userIDs[i].String()),
 				zap.Error(err),
 			)
-			ok := rs.RemoveUser(userID)
+			ok := rs.RemoveUser(userIDs[i])
 			if !ok {
-				rs.Mu.RUnlock()
 				return errors.New("в комнате не осталось активных пользователей")
 			}
 		}
 	}
-	rs.Mu.RUnlock()
-	
+
 	return nil
 }
 
 // GetMessages возвращает список сообщений комнаты
 func (rs *roomService) GetMessages() ([]models.Message, error) {
 	return rs.Repo.GetMessages(rs.ID)
+}
+
+// GetId возвращает id комнаты
+func (rs *roomService) GetId() uuid.UUID {
+	return rs.ID
 }

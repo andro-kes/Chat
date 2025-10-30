@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/andro-kes/Chat/chat/binding"
 	"github.com/andro-kes/Chat/chat/internal/models"
@@ -11,6 +13,7 @@ import (
 	"github.com/andro-kes/Chat/chat/logger"
 	"github.com/andro-kes/Chat/chat/responses"
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
@@ -27,15 +30,13 @@ type ChatHandlers struct {
 // Пример использования:
 //   handler := NewChatHandlers()
 func NewChatHandlers() *ChatHandlers {
-	rm, err := rabbit.Init()
+	chatService := services.NewChatService()
+	rm, err := rabbit.Init(chatService)
 	if err != nil {
-		logger.Log.Fatal(
-			"Не удалось инициализировать очередь сообщений",
-			zap.String("error", err.Error()),
-		)
+		logger.Log.Fatal("Не удалось инициализировать очередь сообщений", zap.Error(err))
 	}
 	return &ChatHandlers{
-		ChatService: services.NewChatService(),
+		ChatService: chatService,
 		RabbitManager: rm,
 	}
 }
@@ -72,52 +73,83 @@ func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось обновить соединение websocket",
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Не удалось обновить соединение websocket",
-		})
+		logger.Log.Error("Не удалось обновить соединение websocket", zap.Error(err))
+		responses.SendJSONResponse(w, 500, map[string]any{"Error": "Не удалось обновить соединение websocket"})
+		return
 	}
 	logger.Log.Info("Соединение установлено")
 
-	url := r.URL
-	query := url.Query()
-	id := query.Get("id")
-
-	roomID, err := uuid.Parse(id)
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	if idStr == "" {
+		// fallback на query param
+		idStr = r.URL.Query().Get("id")
+	}
+	roomID, err := uuid.Parse(idStr)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось спарсить id комнаты",
-			zap.Any("id", roomID),
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Неверный идентификатор комнаты",
-		})
+		logger.Log.Error("Не удалось спарсить id комнаты", zap.String("id", idStr), zap.Error(err))
+		responses.SendJSONResponse(w, 400, map[string]any{"Error": "Неверный идентификатор комнаты"})
+		_ = conn.Close()
 		return
 	}
 
-	for {
-		var message models.Message
-		err := conn.ReadJSON(&message)
+	// Получаем user из контекста
+	currentUserID, err := getUser(r)
+	if err != nil {
+		logger.Log.Warn("Не удалось получить user из контекста", zap.Error(err))
+		_ = conn.Close()
+		responses.SendJSONResponse(w, 401, map[string]any{"Error": "Unauthorized"})
+		return
+	}
+
+	// Получаем/создаём комнату
+	var roomSvc services.RoomService
+	if ch.ChatService.IsActive(roomID) {
+		roomSvc, err = ch.ChatService.GetRoom(roomID)
 		if err != nil {
-			logger.Log.Warn(
-				"Не удалось считать сообщение",
-				zap.String("error", err.Error()),
-			)
-			conn.Close()
+			logger.Log.Error("Не удалось получить комнату", zap.Error(err))
+			_ = conn.Close()
+			responses.SendJSONResponse(w, 500, map[string]any{"Error": "Internal error"})
+			return
+		}
+	} else {
+		roomSvc = services.NewRoomService(roomID)
+		_ = ch.ChatService.AddRoom(roomSvc) // type assert internal, or adjust interface
+	}
+
+	// Регистрируем пользователя в комнате
+	if err := roomSvc.AddUser(*currentUserID, conn); err != nil {
+		logger.Log.Warn("Не удалось добавить пользователя в комнату", zap.Error(err))
+		_ = conn.Close()
+		return
+	}
+
+	// Читаем сообщения от клиента и публикуем
+	for {
+		var in struct {
+			Text string `json:"text"`
+		}
+		if err := conn.ReadJSON(&in); err != nil {
+			logger.Log.Warn("Не удалось считать сообщение", zap.Error(err))
+			_ = conn.Close()
+			// Remove user from room
+			roomSvc.RemoveUser(*currentUserID)
 			return
 		}
 
-		err = ch.RabbitManager.PublishMessage(message)
-		if err != nil {
-			logger.Log.Warn(
-				"Не удалось добавить сообщение в очередь",
-				zap.String("error", err.Error()),
-			)
-			conn.Close()
+		msg := models.Message{
+			CreatedAt: time.Now(),
+			SenderID:  *currentUserID,
+			RoomID:    roomID,
+			Content:   in.Text,
+		}
+
+		// Опубликовать в RabbitMQ
+		if err := ch.RabbitManager.PublishMessage(msg); err != nil {
+			logger.Log.Warn("Не удалось добавить сообщение в очередь", zap.Error(err))
+			// В зависимости от политики можно попытаться повторить, но закрываем соединение
+			_ = conn.Close()
+			roomSvc.RemoveUser(*currentUserID)
 			return
 		}
 	}
@@ -388,13 +420,17 @@ func (*ChatHandlers) MainPageHandler(w http.ResponseWriter, r *http.Request) {
 
 func getUser(r *http.Request) (*uuid.UUID, error) {
 	user := r.Context().Value("user_id")
-	currentUserID, err := uuid.Parse(user.(string))
+	if user == nil {
+		return nil, fmt.Errorf("user_id not found in context")
+	}
+	userStr, ok := user.(string)
+	if !ok {
+		return nil, fmt.Errorf("user_id in context has invalid type")
+	}
+	currentUserID, err := uuid.Parse(userStr)
 	if err != nil {
-		logger.Log.Warn(
-			"Некорректный id пользователя",
-		)
+		logger.Log.Warn("Некорректный id пользователя", zap.Error(err))
 		return nil, err
 	}
-
 	return &currentUserID, nil
 }

@@ -10,7 +10,7 @@ import (
 )
 
 type ChatService interface {
-	AddRoom(room *roomService) error
+	AddRoom(room RoomService) error
 	DeleteRoom(roomID uuid.UUID) error
 	IsActive(roomId uuid.UUID) bool
 	GetCurrentRoom(id uuid.UUID) (*models.Room, error)
@@ -34,13 +34,13 @@ func NewChatService() *chatService {
 }
 
 // AddRoom добавляет новую комнату в активные
-func (cs *chatService) AddRoom(room *roomService) error {
+func (cs *chatService) AddRoom(room RoomService) error {
 	if room == nil {
 		return errors.New("нельзя добавить nil-комнату")
 	}
 	cs.Mu.Lock()
 	defer cs.Mu.Unlock()
-	cs.ActiveRooms[room.ID] = room
+	cs.ActiveRooms[room.GetId()] = room
 	return nil
 }
 
