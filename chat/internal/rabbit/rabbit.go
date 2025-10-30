@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/andro-kes/Chat/chat/internal/models"
@@ -25,6 +26,7 @@ type rabbitManager struct {
 	ch          *amqp.Channel
 	q           amqp.Queue
 	ChatService services.ChatService
+	// можно добавить флаг завершения или context для остановки потребителя
 }
 
 func Init(chatSvc services.ChatService) (*rabbitManager, error) {
@@ -68,6 +70,19 @@ func Init(chatSvc services.ChatService) (*rabbitManager, error) {
 		return nil, err
 	}
 
+	// QoS / prefetch — сделаем 1 (по одному сообщению на консьюмер)
+	// Можно взять из ENV: RABBITMQ_PREFETCH
+	prefetch := 1
+	if v := os.Getenv("RABBITMQ_PREFETCH"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			prefetch = p
+		}
+	}
+	if err := rm.ch.Qos(prefetch, 0, false); err != nil {
+		logger.Log.Warn("Не удалось установить QoS для канала RabbitMQ", zap.Error(err))
+		// не фаталим — но логируем
+	}
+
 	// durable queue
 	rm.q, err = rm.ch.QueueDeclare(
 		"chat",
@@ -105,9 +120,10 @@ func (rm *rabbitManager) PublishMessage(msg models.Message) error {
 		false,
 		false,
 		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
+			ContentType:  "application/json",
+			Body:         body,
 			DeliveryMode: amqp.Persistent,
+			Timestamp:    time.Now(),
 		},
 	)
 	if err != nil {
@@ -117,42 +133,70 @@ func (rm *rabbitManager) PublishMessage(msg models.Message) error {
 	return nil
 }
 
-// consumeMessages считывает сообщения из очереди и рассылает их через WebSocket.
+// ConsumeMessages читает сообщения из очереди и рассылает их через WebSocket.
+// Используется manual ack: autoAck=false в Consume, после успешной обработки вызывается delivery.Ack(false).
 func (rm *rabbitManager) ConsumeMessages() {
 	msgs, err := rm.ch.Consume(
-		rm.q.Name,  // Имя очереди
-		"",      // Имя потребителя
-		true,    // Auto-ack
-		false,   // Exclusive
-		false,   // No-local
-		false,   // No-wait
-		nil,     // Args
+		rm.q.Name, // queue
+		"",        // consumer
+		false,     // autoAck == false -> подтверждать вручную
+		false,     // exclusive
+		false,     // noLocal (not supported by rabbitmq server if true)
+		false,     // noWait
+		nil,       // args
 	)
 	if err != nil {
 		logger.Log.Error("Не удалось подписаться на очередь", zap.Error(err))
 		return
 	}
 
+	logger.Log.Info("RabbitMQ consumer started", zap.String("queue", rm.q.Name))
+
 	for d := range msgs {
 		var msg models.Message
-		err := json.Unmarshal(d.Body, &msg)
-		if err != nil {
+		if err := json.Unmarshal(d.Body, &msg); err != nil {
 			logger.Log.Error("Не удалось десериализовать сообщение", zap.Error(err))
+			if ackErr := d.Nack(false, false); ackErr != nil {
+				logger.Log.Warn("Не удалось Nack сообщение (bad json)", zap.Error(ackErr))
+			}
 			continue
 		}
 
 		room, err := rm.ChatService.GetRoom(msg.RoomID)
 		if err != nil {
 			logger.Log.Error("Неверное id комнаты", zap.Error(err))
+			// если комната не найдена — отдаем Nack с requeue=false (чтобы не зацикливать), либо requeue=true если хотим повторить позже
+			if nackErr := d.Nack(false, false); nackErr != nil {
+				logger.Log.Warn("Не удалось Nack сообщение (room not found)", zap.Error(nackErr))
+			}
 			continue
 		}
-		room.SendMessage(&msg)
 
-		logger.Log.Info("Получено сообщение через RabbitMQ", zap.Any("message", msg))
+		// Попытка доставки — SendMessage может возвращать ошибку (например, DB down или проблемa с websocket)
+		if err := room.SendMessage(&msg); err != nil {
+			logger.Log.Warn("Ошибка при отправке сообщения в комнату", zap.Any("message", msg), zap.Error(err))
+			if nackErr := d.Nack(false, true); nackErr != nil {
+				logger.Log.Warn("Не удалось Nack (requeue) сообщение", zap.Error(nackErr))
+			}
+			continue
+		}
+
+		// Успешно обработано — подтверждаем delivery
+		if ackErr := d.Ack(false); ackErr != nil {
+			logger.Log.Warn("Не удалось Ack сообщение", zap.Error(ackErr))
+		} else {
+			logger.Log.Info("Получено и подтверждено сообщение через RabbitMQ", zap.Any("message", msg))
+		}
 	}
+	logger.Log.Info("RabbitMQ consumer loop exited")
 }
 
+// Stop корректно закрывает канал и соединение
 func (rm *rabbitManager) Stop() {
-	rm.ch.Close()
-	rm.conn.Close()
+	if rm.ch != nil {
+		_ = rm.ch.Close()
+	}
+	if rm.conn != nil {
+		_ = rm.conn.Close()
+	}
 }
