@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/andro-kes/Chat/chat/binding"
 	"github.com/andro-kes/Chat/chat/internal/models"
@@ -58,10 +59,17 @@ func NewChatHandlers() *ChatHandlers {
 //   http.HandleFunc("/chat", ChatHandler)
 func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
-		CheckOrigin:     func(r *http.Request) bool { return true },
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true
+			}
+			return strings.HasPrefix(origin, "http://localhost")
+		},
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logger.Log.Error(

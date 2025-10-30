@@ -2,7 +2,6 @@ package services
 
 import (
 	"errors"
-	"net/http"
 	"os"
 	"time"
 
@@ -34,49 +33,46 @@ func NewTokenService() *tokenService {
 	}
 }
 
-func (token *tokenService) GenerateRefreshToken(userId uuid.UUID) (string, error){
-	logger.Log.Info(
-		"Генерация нового refresh token",
-	)
+func (token *tokenService) GenerateRefreshToken(userId uuid.UUID) (string, error) {
+	logger.Log.Info("Генерация нового refresh token")
 
 	newRefreshTokenID := uuid.New()
-	claims := jwt.RegisteredClaims {
+	claims := jwt.RegisteredClaims{
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(720 * time.Hour)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()), // время создания
-		NotBefore: jwt.NewNumericDate(time.Now()), // становится действительным
-		Issuer:    "auth", // сервис издателя
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		NotBefore: jwt.NewNumericDate(time.Now()),
+		Issuer:    "auth",
 		Subject:   userId.String(),
 		ID:        newRefreshTokenID.String(),
 		Audience:  []string{"auth", "chat"},
 	}
 
 	generatedRefreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	
+
 	secretKey := []byte(os.Getenv("SECRET_KEY"))
 	tokenString, err := generatedRefreshToken.SignedString(secretKey)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось сгенерировать refresh token",
-			zap.Error(err),
-		)
+		logger.Log.Error("Не удалось сгенерировать refresh token", zap.Error(err))
 		return "", err
 	}
 
-	err = token.TokenRepo.Save(userId, newRefreshTokenID, tokenString)
+	// Сохраняем в репозитории: ассоциация user <-> refresh token
+	if err := token.TokenRepo.Save(userId, newRefreshTokenID, tokenString); err != nil {
+		logger.Log.Error("Не удалось сохранить refresh token в репозитории", zap.Error(err))
+		return "", err
+	}
 
-	return tokenString, err
+	return tokenString, nil
 }
 
 func (token *tokenService) GenerateAccessToken(userId uuid.UUID) (string, error) {
-	logger.Log.Info(
-		"Генерация нового access токена",
-	)
+	logger.Log.Info("Генерация нового access токена")
 
 	newAccessTokenID := uuid.New()
-	claims := jwt.RegisteredClaims {
+	claims := jwt.RegisteredClaims{
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()), 
-		NotBefore: jwt.NewNumericDate(time.Now()), 
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		NotBefore: jwt.NewNumericDate(time.Now()),
 		Issuer:    "auth",
 		Subject:   userId.String(),
 		ID:        newAccessTokenID.String(),
@@ -89,81 +85,47 @@ func (token *tokenService) GenerateAccessToken(userId uuid.UUID) (string, error)
 
 	tokenString, err := generatedAccessToken.SignedString(secretKey)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось создать access token",
-			zap.Error(err),
-		)
+		logger.Log.Error("Не удалось создать access token", zap.Error(err))
+		return "", err
 	}
 
-	return tokenString, err
+	return tokenString, nil
 }
 
+// RevokeRefreshToken удаляет refresh-токены по userID (ревокация всех токенов пользователя).
 func (token *tokenService) RevokeRefreshToken(userID uuid.UUID) error {
-	return token.TokenRepo.DeleteByID(userID)
+	return token.TokenRepo.DeleteByUserID(userID)
 }
 
-func (token *tokenService) GetTokenCookie(r *http.Request, name string) (string, error) {
-	cookie, err := r.Cookie(name)
-	if err != nil {
-		logger.Log.Warn(
-			"Не удалось получить токен из cookie",
-			zap.Error(err),
-		)
-		return "", err
-	}
-
-	return cookie.Value, nil
-}
-
-// Возвращает token_id string
+// ParseRefreshToken возвращает subject (user id) из refresh token.
+// Комментарий: возвращаем user_id в виде строки (так удобнее далее парсить UUID).
 func (token *tokenService) ParseRefreshToken(tokenString string) (string, error) {
-	parsedToken, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(t *jwt.Token) (any, error) {
-		return []byte(os.Getenv("SECRET_KEY")), nil
-	})
+	claims, err := token.ParseTokenClaims(tokenString)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось спарсить refresh token",
-			zap.Error(err),
-		)
 		return "", err
 	}
-
-	claims := parsedToken.Claims
-
-	return claims.GetSubject()
+	return claims.Subject, nil
 }
 
-// Возвращает id пользователя
+// ParseAccessToken возвращает subject (user id) из access token
 func (token *tokenService) ParseAccessToken(tokenString string) (string, error) {
-	parsedToken, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(t *jwt.Token) (any, error) {
-		return []byte(os.Getenv("SECRET_KEY")), nil
-	})
+	claims, err := token.ParseTokenClaims(tokenString)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось спарсить access token",
-			zap.Error(err),
-		)
 		return "", err
 	}
-	
-	claims := parsedToken.Claims
-
-	return claims.GetSubject()
+	return claims.Subject, nil
 }
 
-// Возвращает claims токена
+// ParseTokenClaims парсит JWT и возвращает RegisteredClaims
 func (token *tokenService) ParseTokenClaims(tokenString string) (*jwt.RegisteredClaims, error) {
 	parsedToken, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(t *jwt.Token) (any, error) {
 		return []byte(os.Getenv("SECRET_KEY")), nil
 	})
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось спарсить access token claims",
-			zap.Error(err),
-		)
+		logger.Log.Error("Не удалось спарсить token claims", zap.Error(err))
 		return nil, err
 	}
-	
+
 	claims, ok := parsedToken.Claims.(*jwt.RegisteredClaims)
 	if !ok {
 		logger.Log.Error("Не удалось привести claims к RegisteredClaims")
@@ -173,18 +135,20 @@ func (token *tokenService) ParseTokenClaims(tokenString string) (*jwt.Registered
 	return claims, nil
 }
 
+// UpdateRefreshToken вращает (rotates) refresh token:
+// - парсит переданный refresh token чтобы получить user_id,
+// - создаёт новый refresh token для этого user_id,
+// - обновляет запись в репозитории (по user_id) и возвращает новый token.
 func (token *tokenService) UpdateRefreshToken(refreshToken string) (string, error) {
-	id, err := token.ParseRefreshToken(refreshToken)
+	claims, err := token.ParseTokenClaims(refreshToken)
 	if err != nil {
 		return "", err
 	}
 
-	userId, err := uuid.Parse(id)
+	userIdStr := claims.Subject
+	userId, err := uuid.Parse(userIdStr)
 	if err != nil {
-		logger.Log.Warn(
-			"Невалидное id",
-			zap.String("id", id),
-		)
+		logger.Log.Warn("Невалидный user id в refresh token", zap.String("subject", userIdStr), zap.Error(err))
 		return "", err
 	}
 
@@ -193,18 +157,27 @@ func (token *tokenService) UpdateRefreshToken(refreshToken string) (string, erro
 		return "", err
 	}
 
-	return newToken, token.TokenRepo.UpdateRefreshToken(userId, newToken)
+	// Обновляем запись по user_id; репозиторий должен реализовать эту операцию
+	if err := token.TokenRepo.UpdateRefreshToken(userId, newToken); err != nil {
+		logger.Log.Error("Не удалось обновить refresh token в репозитории", zap.Error(err))
+		return "", err
+	}
+
+	return newToken, nil
 }
 
+// UpdateAccessToken парсит переданный access token чтобы получить user_id и возвращает новый access token.
 func (token *tokenService) UpdateAccessToken(accessToken string) (string, error) {
-	id, err := token.ParseAccessToken(accessToken)
+	claims, err := token.ParseTokenClaims(accessToken)
 	if err != nil {
 		return "", err
 	}
-	userId, err := uuid.Parse(id)
+
+	userIdStr := claims.Subject
+	userId, err := uuid.Parse(userIdStr)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return token.GenerateAccessToken(userId)
 }

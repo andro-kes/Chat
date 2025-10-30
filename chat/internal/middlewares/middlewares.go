@@ -4,18 +4,17 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/andro-kes/Chat/chat/grpc"
 	"github.com/andro-kes/Chat/chat/logger"
 	"go.uber.org/zap"
 )
 
-// ContextKey представляет уникальный ключ для хранения user_id в контексте.
-type ContextKey string
+// Используем builn-in для совместимости
+type UserId string
+const UserIDContextKey UserId = "user_id"
 
-const UserIDKey ContextKey = "user_id"
-
-// AuthMiddleware реализует middleware для аутентификации пользователей.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("Authorization")
@@ -25,17 +24,18 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Установим deadline на запрос к auth
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
 		userId, err := grpc.Client(token)
 		if err != nil {
-			logger.Log.Warn(
-				"Ошибка проверки токена",
-				zap.String("error", err.Error()),
-			)
+			logger.Log.Warn("Ошибка проверки токена", zap.String("error", err.Error()))
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), UserIDKey, userId)
+		ctx = context.WithValue(ctx, UserIDContextKey, userId)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

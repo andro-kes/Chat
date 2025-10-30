@@ -9,16 +9,13 @@ import (
 	"go.uber.org/zap"
 )
 
-func BindUserWithJSON(r *http.Request, user *models.User) error  {
+// BindUserWithJSON декодирует JSON тело запроса в переданную структуру user
+func BindUserWithJSON(r *http.Request, user *models.User) error {
 	defer r.Body.Close()
 
-	err := json.NewDecoder(r.Body).Decode(&user)
+	err := json.NewDecoder(r.Body).Decode(user)
 	if err != nil {
-		logger.Log.Warn(
-			"Не удалось декодировать данные пользователя",
-			zap.Any("data", user),
-		)
+		logger.Log.Warn("Не удалось декодировать данные пользователя", zap.Error(err))
 	}
-	
 	return err
 }

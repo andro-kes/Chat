@@ -3,12 +3,17 @@ package middlewares
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/andro-kes/Chat/auth/internal/services"
 	"github.com/andro-kes/Chat/auth/logger"
 	"go.uber.org/zap"
 )
+
+type UserId string
+
+const UserIDContextKey UserId = "user_id"
 
 type authMiddlewares struct {
 	TokenService services.TokenService
@@ -20,107 +25,36 @@ func NewAuthMiddlewares() *authMiddlewares {
 	}
 }
 
-type UserId string
-
 func (am *authMiddlewares) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Log.Info("Проверка на авторизованность пользователя")
 
-		token := r.Header.Get("Authentication") 
-
-		cookie, err := r.Cookie("access_token")
-		if err != nil {
-			logger.Log.Warn(
-				"Отсутствует access_token",
-				zap.Error(err),
-			)
-			http.Error(w, "Access token отсутствует", http.StatusUnauthorized)
-			return
-		}
-		accessToken := cookie.Value
-
-		if accessToken != token {
-			logger.Log.Warn(
-				"access токены не совпали",
-			)
-			http.Error(w, "Требуется авторизация", http.StatusUnauthorized)
-			return
+		// Ожидаем заголовок Authorization: Bearer <token>
+		authHeader := r.Header.Get("Authorization")
+		var token string
+		if authHeader != "" && strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			token = authHeader[7:]
+		} else {
+			// fallback на cookie
+			cookie, err := r.Cookie("access_token")
+			if err != nil {
+				logger.Log.Warn("Access token отсутствует", zap.Error(err))
+				http.Error(w, "Access token отсутствует", http.StatusUnauthorized)
+				return
+			}
+			token = cookie.Value
 		}
 
-		claims, err := am.TokenService.ParseTokenClaims(accessToken)
-		if err != nil {
-			logger.Log.Error("Не удалось извлечь данные из токена", zap.Error(err))
-			http.Error(w, "Не удалось извлечь данные из токена", http.StatusBadRequest)
-			return
-		}
-
-		if time.Now().After(claims.ExpiresAt.Time) {
-			logger.Log.Info("Обновление токенов")
-			refreshTokenCookie, err := r.Cookie("refresh_token")
-			if err != nil {
-				logger.Log.Error("Refresh token отсутствует", zap.Error(err))
-				http.Error(w, "Refresh token отсутствует", http.StatusUnauthorized)
-				return
-			}
-
-			refreshTokenClaims, err := am.TokenService.ParseTokenClaims(accessToken)
-			if err != nil {
-				logger.Log.Error("Не удалось извлечь данные из токена", zap.Error(err))
-				http.Error(w, "Не удалось извлечь данные из токена", http.StatusBadRequest)
-				return
-			}
-			if time.Now().After(refreshTokenClaims.ExpiresAt.Time) {
-				logger.Log.Error("Период действия Refresh token истек")
-				http.Error(w, "Период действия Refresh token истек", http.StatusUnauthorized)
-				return
-			}
-
-			newToken, err := am.TokenService.UpdateRefreshToken(refreshTokenCookie.Value)
-			if err != nil {
-				logger.Log.Error("Не удалось обновить refresh token", zap.Error(err))
-				http.Error(w, "Не удалось обновить refresh token", http.StatusUnauthorized)
-				return
-			}
-			cookie := &http.Cookie{
-				Name:     "refresh_token",
-				Value:    newToken,
-				Expires:  time.Now().Add(720 * time.Hour),
-				Path:     "/",
-				HttpOnly: true, // Доступ только через HTTP, защита от XSS
-				Secure:   true, // Только HTTPS
-				SameSite: http.SameSiteStrictMode, // Защита от CSRF
-			}
-			http.SetCookie(w, cookie)
-
-			newToken, err = am.TokenService.UpdateAccessToken(accessToken)
-			if err != nil {
-				http.Error(w, "Не удалось обновить access token", http.StatusUnauthorized)
-				return
-			}
-			cookie = &http.Cookie{
-				Name:     "access_token",
-				Value:    newToken,
-				Expires:  time.Now().Add(5 * time.Minute),
-				Path:     "/",
-				HttpOnly: true, // Доступ только через HTTP, защита от XSS
-				Secure:   true, // Только HTTPS
-				SameSite: http.SameSiteStrictMode, // Защита от CSRF
-			}
-			http.SetCookie(w, cookie)
-		}
-
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
 		userID, err := am.TokenService.ParseAccessToken(token)
 		if err != nil {
-			http.Error(w, "Не удалось извлечь данные из токена", http.StatusBadRequest)
+			logger.Log.Warn("Не удалось извлечь данные из токена", zap.Error(err))
+			http.Error(w, "Не удалось извлечь данные из токена", http.StatusUnauthorized)
 			return
 		}
 
-		// own type for adding to context
-		var contextUserId UserId = "user_id"
-
-		logger.Log.Info("Добавление пользователя в контекст")
-		ctx := context.WithValue(r.Context(), contextUserId, userID)
-
+		ctx = context.WithValue(ctx, UserIDContextKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

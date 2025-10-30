@@ -13,7 +13,9 @@ import (
 )
 
 // authServiceServer реализует интерфейс AuthServiceServer.
+// Важно: встраиваем (embed) UnimplementedAuthServiceServer для forward-совместимости.
 type authServiceServer struct {
+	UnimplementedAuthServiceServer
 	tokenService services.TokenService
 }
 
@@ -26,10 +28,8 @@ func NewAuthServiceServer(tokenService services.TokenService) *authServiceServer
 
 // GetUserId возвращает идентификатор пользователя из токена.
 func (ass *authServiceServer) GetUserId(ctx context.Context, t *TokenRequest) (*UserIdResponse, error) {
-	logger.Log.Info(
-		"Проверка авторизации",
-		zap.String("access_token", t.Token),
-	)
+	// Не логируем сам токен (чувствительные данные)
+	logger.Log.Info("Проверка авторизации (gRPC)")
 
 	claims, err := ass.tokenService.ParseTokenClaims(t.Token)
 	if err != nil {
@@ -37,9 +37,10 @@ func (ass *authServiceServer) GetUserId(ctx context.Context, t *TokenRequest) (*
 		return nil, status.Errorf(codes.Unauthenticated, "Ошибка проверки токена")
 	}
 
-	userId, err := claims.GetSubject()
-	if err != nil {
-		logger.Log.Error("Не удалось извлечь subject из токена", zap.Error(err))
+	// RegisteredClaims содержит Subject как строку
+	userId := claims.Subject
+	if userId == "" {
+		logger.Log.Error("Токен не содержит subject")
 		return nil, status.Errorf(codes.Unauthenticated, "Некорректный токен")
 	}
 

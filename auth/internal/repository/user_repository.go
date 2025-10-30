@@ -1,4 +1,3 @@
-// ВРЕМЕННО: Пакет repository инкапсулирует доступ к БД (users).
 package repository
 
 import (
@@ -14,97 +13,59 @@ import (
 	"go.uber.org/zap"
 )
 
-// UserRepo ВРЕМЕННО: интерфейс доступа к данным пользователя
-type UserRepo interface {
-	FindByEmail(email string) (*models.User, error)
-	CreateUser(user *models.User) error
-	SetPassword(user *models.User) error
-}
-
-type DBUserRepo struct {
+type UserRepo struct {
 	Pool *pgxpool.Pool
 }
 
-func NewUserRepo() UserRepo {
-	return &DBUserRepo{
-		Pool: database.GetDBPool(),
-	}
+func NewUserRepo() *UserRepo {
+	return &UserRepo{Pool: database.GetDBPool()}
 }
 
-// FindByEmail ВРЕМЕННО: ищет пользователя по email
-func (dur *DBUserRepo) FindByEmail(email string) (*models.User, error) {
+func (dur *UserRepo) FindByEmail(email string) (*models.User, error) {
 	var user models.User
 	err := dur.Pool.QueryRow(
-		context.Background(), 
+		context.Background(),
 		"SELECT id, created_at, updated_at, deleted_at, username, email, password FROM users WHERE email=$1",
 		email,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt, &user.Username, &user.Email, &user.Password)
 
 	if err != nil {
-		logger.Log.Warn(
-			"Пользователь не найден",
-			zap.String("email", email),
-			zap.Error(err),
-		)
+		logger.Log.Warn("Пользователь не найден", zap.String("email", email), zap.Error(err))
+		return nil, err
 	}
 
-	return &user, err
+	return &user, nil
 }
 
-// CreateUser ВРЕМЕННО: создает нового пользователя
-func (dur *DBUserRepo) CreateUser(user *models.User) error {
-	logger.Log.Info(
-		"Создаем нового пользователя",
-		zap.String("email", user.Email),
-	)
-	
-	query := `
-	INSERT INTO users 
-	(id, created_at, updated_at, deleted_at, username, email, password)
-	VALUES
-	($1, $2, $3, $4, $5, $6, $7)
-	`
+func (dur *UserRepo) CreateUser(user *models.User) error {
+	logger.Log.Info("Создаем нового пользователя", zap.String("email", user.Email))
 
-	id, err := uuid.NewUUID()
-	if err != nil {
-		logger.Log.Error(
-			"Не удалось создать uuid",
-			zap.Error(err),
-		)
-		return err
-	}
-
-	_, err = dur.Pool.Exec(
+	id := uuid.New()
+	_, err := dur.Pool.Exec(
 		context.Background(),
-		query,
+		`INSERT INTO users (id, created_at, updated_at, deleted_at, username, email, password) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 		id, time.Now(), nil, nil, user.Username, user.Email, user.Password,
 	)
-
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось создать пользователя",
-			zap.Error(err),
-		)
+		logger.Log.Error("Не удалось создать пользователя", zap.Error(err))
 		return err
 	}
-
 	return nil
 }
 
-
-// SetPassword ВРЕМЕННО: обновляет пароль пользователя
-func (dur *DBUserRepo) SetPassword(user *models.User) error {
-	row := dur.Pool.QueryRow(
+func (dur *UserRepo) SetPassword(user *models.User) error {
+	cmdTag, err := dur.Pool.Exec(
 		context.Background(),
 		"UPDATE users SET password=$1 WHERE email=$2",
 		user.Password, user.Email,
 	)
-	if row != nil {
-		logger.Log.Warn(
-			"Не удалось добавить пароль полльзователю",
-			zap.String("password", user.Password),
-		)
-		return errors.New("Не удалось обновить пароль")
+	if err != nil {
+		logger.Log.Error("Не удалось обновить пароль", zap.Error(err))
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		logger.Log.Warn("Пароль не обновлён: пользователь не найден", zap.String("email", user.Email))
+		return errors.New("не удалось обновить пароль")
 	}
 	return nil
 }

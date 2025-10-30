@@ -3,14 +3,19 @@ package grpc
 import (
 	"context"
 	"time"
+	"os"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 func Client(token string) (string, error) {
-	creds := insecure.NewCredentials()
-	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(creds))
+	addr := os.Getenv("AUTH_GRPC_ADDR")
+	if addr == "" {
+		addr = "localhost:50051"
+	}
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return "", err
 	}
@@ -18,8 +23,8 @@ func Client(token string) (string, error) {
 
 	client := NewAuthServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 
 	res, err := client.GetUserId(ctx, &TokenRequest{Token: token})
 	if err != nil {
