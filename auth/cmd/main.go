@@ -9,8 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	authgrpc "github.com/andro-kes/Chat/auth/grpc"
 	"github.com/andro-kes/Chat/auth/configs"
+	authgrpc "github.com/andro-kes/Chat/auth/grpc"
+	"github.com/andro-kes/Chat/auth/internal/database"
 	"github.com/andro-kes/Chat/auth/internal/handlers"
 	"github.com/andro-kes/Chat/auth/internal/middlewares"
 	"github.com/andro-kes/Chat/auth/internal/services"
@@ -23,6 +24,7 @@ func main() {
 	logger.Init()
 	defer logger.Close()
 	configs.InitConfigs()
+	database.Init()
 
 	// HTTP handlers
 	authHandlers := handlers.NewAuthHandlers()

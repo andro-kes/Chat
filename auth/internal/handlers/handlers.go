@@ -7,10 +7,8 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"time"
 
@@ -81,125 +79,87 @@ func (ah *AuthHandlers) LoginYandexHandler(w http.ResponseWriter, r *http.Reques
 	initData()
 	logger.Log.Info("LoginYandexHandler запущен")
 
-	currentUrl := oauth2Config.AuthCodeURL(oauthStateString)
-	query, err := url.Parse(currentUrl)
-	if err != nil {
-		logger.Log.Error(
-			"Не удалось распарсить url",
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 404, map[string]any{
-			"Error": "не верный адрес страницы",
-		})
+	// брать state и code из параметров запроса, которые вернул провайдер
+	params := r.URL.Query()
+	state := params.Get("state")
+	if state == "" {
+		logger.Log.Warn("State отсутствует в запросе")
+		responses.SendJSONResponse(w, 400, map[string]any{"Error": "Неверный state"})
 		return
 	}
-
-	params := query.Query()
-
-	state := params.Get("state")
-	logger.Log.Info(
-		"Получен state:", 
-		zap.String("state", state),
-	)
 	if state != oauthStateString {
-		logger.Log.Warn(
-			fmt.Sprintf("Неверный статус, ожидалось: %s, получено: '%s'\n",
-				oauthStateString, state,
-			),
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "Неверный state",
-		})
+		logger.Log.Warn("Неверный state", zap.String("expected", oauthStateString), zap.String("got", state))
+		responses.SendJSONResponse(w, 400, map[string]any{"Error": "Неверный state"})
 		return
 	}
 
 	code := params.Get("code")
-	logger.Log.Info(
-		"Получен код",
-		zap.String("code", code),
-	)
+	if code == "" {
+		logger.Log.Warn("Code отсутствует в запросе")
+		responses.SendJSONResponse(w, 400, map[string]any{"Error": "Код авторизации отсутствует"})
+		return
+	}
 
 	token, err := oauth2Config.Exchange(context.Background(), code)
 	if err != nil {
-		logger.Log.Error(
-			"oauthConf.Exchange() не сработал",
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "oauthConf.Exchange() не сработал",
-		})
+		logger.Log.Error("oauth2.Exchange failed", zap.Error(err))
+		responses.SendJSONResponse(w, 400, map[string]any{"Error": "Не удалось обменять код на токен"})
 		return
 	}
 
 	client := oauth2Config.Client(context.Background(), token)
 	resp, err := client.Get("https://login.yandex.ru/info?format=json")
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось получить информацию о пользователе",
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Не удалось получить информацию о пользователе",
-		})
+		logger.Log.Error("Не удалось получить информацию о пользователе", zap.Error(err))
+		responses.SendJSONResponse(w, 500, map[string]any{"Error": "Не удалось получить информацию о пользователе"})
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось прочитать тело ответа",
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Не удалось прочитать тело ответа",
-		})
+		logger.Log.Error("Не удалось прочитать тело ответа", zap.Error(err))
+		responses.SendJSONResponse(w, 500, map[string]any{"Error": "Не удалось прочитать тело ответа"})
 		return
 	}
 
 	var yandexUser YandexUser
-	err = json.Unmarshal(body, &yandexUser)
-	if err != nil {
-		logger.Log.Error(
-			"Не удалось разобрать JSON",
-			zap.Error(err),
-		)
-		responses.SendJSONResponse(w, 500, map[string]any{
-			"Error": "Не удалось разобрать JSON",
-		})
+	if err := json.Unmarshal(body, &yandexUser); err != nil {
+		logger.Log.Error("Не удалось разобрать JSON", zap.Error(err))
+		responses.SendJSONResponse(w, 500, map[string]any{"Error": "Не удалось разобрать JSON"})
 		return
 	}
 
 	loginData, err := ah.UserService.OAuthLogin(yandexUser.Login, yandexUser.DefaultEmail)
-	if err.Error() == "Пользователь был создан" {
+	// Лучше вернуть sentinel error из UserService, но если пока строка:
+	if err != nil && err.Error() == "пользователь был создан" {
+		// новый пользователь — просим установить пароль (или показываем форму)
 		responses.SendHTMLResponse(w, 301, "auth.html", map[string]any{
-			"title": "Добавить пароль",
+			"title":    "Добавить пароль",
 			"username": loginData.User.Username,
-			"email": loginData.User.Email,
-		})
-		return
-	} else if err != nil {
-		responses.SendJSONResponse(w, 400, map[string]any{
-			"Error": "Не удалось войти с помощью OAuth",
-		})
-		return
-	} else {
-		responses.SendJSONResponse(w, 200, map[string]any{
-			"Message": "Успешный вход",
-			"AccessToken": loginData.AccessTokenString,
+			"email":    loginData.User.Email,
 		})
 		return
 	}
+	if err != nil {
+		responses.SendJSONResponse(w, 400, map[string]any{"Error": "Не удалось войти с помощью OAuth"})
+		return
+	}
+
+	responses.SendJSONResponse(w, 200, map[string]any{
+		"Message":     "Успешный вход",
+		"AccessToken": loginData.AccessTokenString,
+	})
 }
 
-// SetPassword ВРЕМЕННО: добавляет пароль пользователю после OAuth
+// SetPassword: добавляет пароль пользователю после OAuth
 func (au *AuthHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	err := binding.BindUserWithJSON(r, &user)
 	if err != nil {
 		logger.Log.Warn(
 			"Невалидный пароль",
-			zap.String("password", user.Password),
+			zap.String("error", err.Error()),
 		)
 		responses.SendJSONResponse(w, 400, map[string]any{
 			"Error": "Невалидный пароль",
