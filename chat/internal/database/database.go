@@ -35,7 +35,9 @@ func Init() {
 	config.MaxConnIdleTime = 30 * time.Minute
 	config.HealthCheckPeriod = time.Minute
 
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	ctx := context.Background()
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		logger.Log.Panic(
 			"Не удалось создать пул подключения",
@@ -43,6 +45,8 @@ func Init() {
 			zap.Error(err),
 		)
 	}
+
+	makeMigrations(ctx, pool)
 
 	SetDBPool(pool)
 }
