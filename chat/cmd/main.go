@@ -69,6 +69,7 @@ func main() {
 
 	if chatHandlers != nil && chatHandlers.RabbitManager != nil {
 		chatHandlers.RabbitManager.Stop()
+		database.ClosePool()
 	}
 
 	log.Println("Server stopped")

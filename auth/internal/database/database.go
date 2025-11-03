@@ -52,6 +52,19 @@ func Init() {
 		)
 	}
 
+	attempts := 5
+	retryDelay := 1 * time.Second
+	for range attempts {
+		if err := pool.Ping(ctx); err != nil {
+			logger.Log.Warn(
+				"Не удалось проверить подключение к БД",
+				zap.String("db", "user_db"),
+				zap.Error(err),
+			)
+			time.Sleep(retryDelay)
+		}
+	}
+
 	makeMigrations(ctx, pool)
 
 	SetDBPool(pool)
@@ -64,4 +77,10 @@ func GetDBPool() *pgxpool.Pool {
 
 func SetDBPool(pool *pgxpool.Pool) {
 	dbPool = pool
+}
+
+func ClosePool() {
+	if dbPool != nil {
+		dbPool.Close()
+	}
 }

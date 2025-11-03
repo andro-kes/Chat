@@ -35,7 +35,6 @@ func (am *authMiddlewares) AuthMiddleware(next http.Handler) http.Handler {
 		if authHeader != "" && strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 			token = authHeader[7:]
 		} else {
-			// fallback на cookie
 			cookie, err := r.Cookie("access_token")
 			if err != nil {
 				logger.Log.Warn("Access token отсутствует", zap.Error(err))

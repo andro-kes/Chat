@@ -213,7 +213,7 @@ func (ah *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
         Value:    loginData.RefreshTokenString,
         Path:     "/",
         HttpOnly: true, // Доступ только через HTTP, защита от XSS
-        Secure:   true, // Только HTTPS
+        Secure:   false, // local
         SameSite: http.SameSiteStrictMode, // Защита от CSRF
     }
     http.SetCookie(w, cookie)
@@ -224,7 +224,7 @@ func (ah *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
         Value:    loginData.AccessTokenString,
         Path:     "/",
         HttpOnly: true, // Доступ только через HTTP, защита от XSS
-        Secure:   true, // Только HTTPS
+        Secure:   false, // local
         SameSite: http.SameSiteStrictMode, // Защита от CSRF
     }
     http.SetCookie(w, cookie)
@@ -309,7 +309,7 @@ func (ah *AuthHandlers) SignUpHandler(w http.ResponseWriter, r *http.Request) {
         Value:    loginData.RefreshTokenString,
         Path:     "/",
         HttpOnly: true, // Доступ только через HTTP, защита от XSS
-        Secure:   true, // Только HTTPS
+        Secure:   false, // local
         SameSite: http.SameSiteStrictMode, // Защита от CSRF
     }
     http.SetCookie(w, cookie)
@@ -320,7 +320,7 @@ func (ah *AuthHandlers) SignUpHandler(w http.ResponseWriter, r *http.Request) {
         Value:    loginData.AccessTokenString,
         Path:     "/",
         HttpOnly: true, // Доступ только через HTTP, защита от XSS
-        Secure:   true, // Только HTTPS
+        Secure:   false, // local
         SameSite: http.SameSiteStrictMode, // Защита от CSRF
     }
     http.SetCookie(w, cookie)

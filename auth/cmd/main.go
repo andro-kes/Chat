@@ -90,6 +90,7 @@ func main() {
 
 	// gRPC graceful stop
 	grpcServer.GracefulStop()
+	database.ClosePool()
 
 	logger.Log.Info("servers stopped")
 }
