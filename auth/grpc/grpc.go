@@ -28,7 +28,6 @@ func NewAuthServiceServer(tokenService services.TokenService) *authServiceServer
 
 // GetUserId возвращает идентификатор пользователя из токена.
 func (ass *authServiceServer) GetUserId(ctx context.Context, t *TokenRequest) (*UserIdResponse, error) {
-	// Не логируем сам токен (чувствительные данные)
 	logger.Log.Info("Проверка авторизации (gRPC)")
 
 	claims, err := ass.tokenService.ParseTokenClaims(t.Token)

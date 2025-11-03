@@ -183,6 +183,7 @@ Chat:
 
 ## План работ / TODO
 -----------------
+- Исправить frontend для работы с токенами.
 - Согласовать WebSocket путь между frontend и server (`/{id}/ws` vs `/{id}/connect`).
 - Добавить DLX/retry очередь для RabbitMQ.
 - Сделать миграции в repo и интеграцию с database.Init (golang-migrate).

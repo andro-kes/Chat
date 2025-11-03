@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -19,7 +18,7 @@ import (
 )
 
 type ChatHandlers struct {
-	ChatService services.ChatService
+	ChatService   services.ChatService
 	RabbitManager rabbit.RabbitManager
 }
 
@@ -36,7 +35,7 @@ func NewChatHandlers() *ChatHandlers {
 		logger.Log.Fatal("Не удалось инициализировать очередь сообщений", zap.Error(err))
 	}
 	return &ChatHandlers{
-		ChatService: chatService,
+		ChatService:   chatService,
 		RabbitManager: rm,
 	}
 }
@@ -65,7 +64,8 @@ func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 			if origin == "" {
 				return true
 			}
-			return strings.HasPrefix(origin, "http://localhost")
+			return strings.HasPrefix(origin, "http://localhost") || 
+				   strings.HasPrefix(origin, "https://localhost")
 		},
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -77,6 +77,7 @@ func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 		responses.SendJSONResponse(w, 500, map[string]any{"Error": "Не удалось обновить соединение websocket"})
 		return
 	}
+	defer conn.Close()
 	logger.Log.Info("Соединение установлено")
 
 	vars := mux.Vars(r)
@@ -89,7 +90,6 @@ func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Log.Error("Не удалось спарсить id комнаты", zap.String("id", idStr), zap.Error(err))
 		responses.SendJSONResponse(w, 400, map[string]any{"Error": "Неверный идентификатор комнаты"})
-		_ = conn.Close()
 		return
 	}
 
@@ -97,7 +97,6 @@ func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	currentUserID, err := getUser(r)
 	if err != nil {
 		logger.Log.Warn("Не удалось получить user из контекста", zap.Error(err))
-		_ = conn.Close()
 		responses.SendJSONResponse(w, 401, map[string]any{"Error": "Unauthorized"})
 		return
 	}
@@ -108,21 +107,20 @@ func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 		roomSvc, err = ch.ChatService.GetRoom(roomID)
 		if err != nil {
 			logger.Log.Error("Не удалось получить комнату", zap.Error(err))
-			_ = conn.Close()
 			responses.SendJSONResponse(w, 500, map[string]any{"Error": "Internal error"})
 			return
 		}
 	} else {
 		roomSvc = services.NewRoomService(roomID)
-		_ = ch.ChatService.AddRoom(roomSvc) // type assert internal, or adjust interface
+		_ = ch.ChatService.AddRoom(roomSvc)
 	}
 
 	// Регистрируем пользователя в комнате
 	if err := roomSvc.AddUser(*currentUserID, conn); err != nil {
 		logger.Log.Warn("Не удалось добавить пользователя в комнату", zap.Error(err))
-		_ = conn.Close()
 		return
 	}
+	defer roomSvc.RemoveUser(*currentUserID)
 
 	// Читаем сообщения от клиента и публикуем
 	for {
@@ -131,9 +129,6 @@ func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := conn.ReadJSON(&in); err != nil {
 			logger.Log.Warn("Не удалось считать сообщение", zap.Error(err))
-			_ = conn.Close()
-			// Remove user from room
-			roomSvc.RemoveUser(*currentUserID)
 			return
 		}
 
@@ -147,9 +142,6 @@ func (ch *ChatHandlers) ChatHandler(w http.ResponseWriter, r *http.Request) {
 		// Опубликовать в RabbitMQ
 		if err := ch.RabbitManager.PublishMessage(msg); err != nil {
 			logger.Log.Warn("Не удалось добавить сообщение в очередь", zap.Error(err))
-			// В зависимости от политики можно попытаться повторить, но закрываем соединение
-			_ = conn.Close()
-			roomSvc.RemoveUser(*currentUserID)
 			return
 		}
 	}
@@ -179,11 +171,7 @@ func (ch *ChatHandlers) ChatPageHandler(w http.ResponseWriter, r *http.Request) 
 	id := query.Get("id")
 	roomID, err := uuid.Parse(id)
 	if err != nil {
-		logger.Log.Error(
-			"Не удалось спарсить id комнаты",
-			zap.Any("id", roomID),
-			zap.Error(err),
-		)
+		logger.Log.Error("Не удалось спарсить id комнаты", zap.Error(err))
 		responses.SendJSONResponse(w, 500, map[string]any{
 			"Error": "Неверный идентификатор комнаты",
 		})
@@ -195,13 +183,12 @@ func (ch *ChatHandlers) ChatPageHandler(w http.ResponseWriter, r *http.Request) 
 		responses.SendJSONResponse(w, 400, map[string]any{
 			"error": "Не удалось получить данные о пользователе",
 		})
+		return
 	}
 
 	if !ch.ChatService.CheckAccess(*currentUserID) {
-		logger.Log.Warn(
-			"У пользователя нет доступа в эту комнату",
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
+		logger.Log.Warn("У пользователя нет доступа в эту комнату")
+		responses.SendJSONResponse(w, 403, map[string]any{
 			"Error": "Access denied",
 		})
 		return
@@ -212,7 +199,12 @@ func (ch *ChatHandlers) ChatPageHandler(w http.ResponseWriter, r *http.Request) 
 		ch.ChatService.AddRoom(roomService)
 	}
 
-	responses.SendHTMLResponse(w, 200, "chat.html", nil)
+	// Передаем user_id в шаблон
+	data := map[string]any{
+		"room_id": roomID.String(),
+		"user_id": currentUserID.String(),
+	}
+	responses.SendHTMLResponse(w, 200, "chat.html", data)
 }
 
 // helper struct for parsing room name
@@ -244,28 +236,28 @@ func (ch *ChatHandlers) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		responses.SendJSONResponse(w, 400, map[string]any{
 			"error": "Не удалось получить данные о пользователе",
 		})
+		return
 	}
 
 	var roomName RoomName
 	if err := binding.BindWithJSON(r, &roomName); err != nil {
 		logger.Log.Error("Не удалось декодировать данные")
-		responses.SendJSONResponse(w, 404, map[string]any{
+		responses.SendJSONResponse(w, 400, map[string]any{
 			"Error": "Невалидное название комнаты",
 		})
+		return
 	}
 
 	err = ch.ChatService.CreateRoom(roomName.Name, *currentUserID)
 	if err != nil {
-		logger.Log.Warn(
-			"Комната с таким названием уже существует",
-			zap.String("room_name", roomName.Name),
-		)
-		responses.SendJSONResponse(w, 400, map[string]any{
+		logger.Log.Warn("Комната с таким названием уже существует", zap.String("room_name", roomName.Name))
+		responses.SendJSONResponse(w, 409, map[string]any{
 			"Error": "Комната с таким названием уже существует",
 		})
+		return
 	}
 
-	responses.SendJSONResponse(w, 301, map[string]any{
+	responses.SendJSONResponse(w, 201, map[string]any{
 		"Message": "Room was created successfully",
 	})
 }
@@ -293,34 +285,27 @@ func (ch *ChatHandlers) GetRoomMessages(w http.ResponseWriter, r *http.Request) 
 	id := query.Get("room_id")
 
 	if id == "" {
-		responses.SendJSONResponse(w, 404, map[string]any{
+		responses.SendJSONResponse(w, 400, map[string]any{
 			"Error": "Невалидный id комнаты",
 		})
-		logger.Log.Warn(
-			"Не удалось спарсить id комнаты",
-		)
+		logger.Log.Warn("Пустой id комнаты")
 		return
 	}
 	
 	roomID, err := uuid.Parse(id)
 	if err != nil {
-		responses.SendJSONResponse(w, 404, map[string]any{
+		responses.SendJSONResponse(w, 400, map[string]any{
 			"Error": "Невалидный id комнаты",
 		})
-		logger.Log.Warn(
-			"Не удалось спарсить id комнаты",
-			zap.Any("id", roomID),
-			zap.Error(err),
-		)
+		logger.Log.Warn("Не удалось спарсить id комнаты", zap.String("id", id), zap.Error(err))
+		return
 	}
 
 	if !ch.ChatService.IsActive(roomID) {
 		responses.SendJSONResponse(w, 404, map[string]any{
 			"Error": "Комната не активна",
 		})
-		logger.Log.Warn(
-			"Комната не активна",
-		)
+		logger.Log.Warn("Комната не активна")
 		return
 	}
 
@@ -329,20 +314,17 @@ func (ch *ChatHandlers) GetRoomMessages(w http.ResponseWriter, r *http.Request) 
 		responses.SendJSONResponse(w, 404, map[string]any{
 			"Error": "Комната не найдена",
 		})
-		logger.Log.Warn(
-			"Комната не найдена",
-		)
+		logger.Log.Warn("Комната не найдена", zap.String("room_id", roomID.String()))
+		return
 	}
 
 	messages, err := room.GetMessages()
 	if err != nil {
-		logger.Log.Warn(
-			"Не удалось получить сообщения",
-			zap.String("room_id", roomID.String()),
-		)
-		responses.SendJSONResponse(w, 404, map[string]any{
-			"Messages": messages,
+		logger.Log.Warn("Не удалось получить сообщения", zap.String("room_id", roomID.String()))
+		responses.SendJSONResponse(w, 500, map[string]any{
+			"Error": "Internal server error",
 		})
+		return
 	}
 
 	responses.SendJSONResponse(w, 200, map[string]any{
@@ -372,18 +354,16 @@ func (ch *ChatHandlers) GetUserRooms(w http.ResponseWriter, r *http.Request) {
 		responses.SendJSONResponse(w, 400, map[string]any{
 			"error": "Не удалось получить данные о пользователе",
 		})
+		return
 	}
     
 	rooms, err := ch.ChatService.GetUserRooms(*currentUserID)
 	if err != nil {
-		logger.Log.Warn(
-			"Не удалось получить списко комнат",
-			zap.String("user_id", currentUserID.String()),
-			zap.String("error", err.Error()),
-		)
-		responses.SendJSONResponse(w, 404, map[string]any{
-			"rooms": rooms,
+		logger.Log.Warn("Не удалось получить списко комнат", zap.String("user_id", currentUserID.String()), zap.String("error", err.Error()))
+		responses.SendJSONResponse(w, 500, map[string]any{
+			"error": "Internal server error",
 		})
+		return
 	}
 
 	responses.SendJSONResponse(w, 200, map[string]any{
@@ -405,32 +385,49 @@ func (ch *ChatHandlers) GetUserRooms(w http.ResponseWriter, r *http.Request) {
 //   - 400 Bad Request: Если идентификатор пользователя некорректен.
 // Пример использования:
 //   http.HandleFunc("/", MainPageHandler)
-func (*ChatHandlers) MainPageHandler(w http.ResponseWriter, r *http.Request) {
+func (ch *ChatHandlers) MainPageHandler(w http.ResponseWriter, r *http.Request) {
 	currentUserID, err := getUser(r)
 	if err != nil {
 		responses.SendJSONResponse(w, 400, map[string]any{
 			"error": "Не удалось получить данные о пользователе",
 		})
+		return
 	}
 
-	responses.SendHTMLResponse(w, 200, "main.html", map[string]any{
-		"user_id": *currentUserID,
-	})
+	data := map[string]any{
+		"user_id": currentUserID.String(),
+	}
+	responses.SendHTMLResponse(w, 200, "main.html", data)
 }
 
 func getUser(r *http.Request) (*uuid.UUID, error) {
 	user := r.Context().Value("user_id")
 	if user == nil {
-		return nil, fmt.Errorf("user_id not found in context")
+		return nil, &AuthError{Message: "user_id not found in context"}
 	}
+	
 	userStr, ok := user.(string)
 	if !ok {
-		return nil, fmt.Errorf("user_id in context has invalid type")
+		return nil, &AuthError{Message: "user_id in context has invalid type"}
 	}
+	
 	currentUserID, err := uuid.Parse(userStr)
 	if err != nil {
 		logger.Log.Warn("Некорректный id пользователя", zap.Error(err))
-		return nil, err
+		return nil, &AuthError{Message: "invalid user_id format", Cause: err}
 	}
 	return &currentUserID, nil
+}
+
+// AuthError представляет ошибку аутентификации
+type AuthError struct {
+	Message string
+	Cause   error
+}
+
+func (e *AuthError) Error() string {
+	if e.Cause != nil {
+		return e.Message + ": " + e.Cause.Error()
+	}
+	return e.Message
 }

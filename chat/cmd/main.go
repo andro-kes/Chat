@@ -32,12 +32,17 @@ func main() {
 
 	r := mux.NewRouter()
 
-	r.Handle("/{id}/connect", middlewares.RecoveryMiddleware(middlewares.AuthMiddleware(http.HandlerFunc(chatHandlers.ChatHandler)))).Methods(http.MethodGet, http.MethodPost)
+	// Добавляем middleware для статических файлов
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
+
+	// Регистрируем маршруты
+	r.Handle("/{id}/connect", middlewares.RecoveryMiddleware(middlewares.AuthMiddleware(http.HandlerFunc(chatHandlers.ChatHandler)))).Methods(http.MethodGet)
 	r.Handle("/{id}", middlewares.RecoveryMiddleware(middlewares.AuthMiddleware(http.HandlerFunc(chatHandlers.ChatPageHandler)))).Methods(http.MethodGet)
 	r.Handle("/create", middlewares.RecoveryMiddleware(middlewares.AuthMiddleware(http.HandlerFunc(chatHandlers.CreateRoom)))).Methods(http.MethodPost)
 	r.Handle("/{id}/messages", middlewares.RecoveryMiddleware(middlewares.AuthMiddleware(http.HandlerFunc(chatHandlers.GetRoomMessages)))).Methods(http.MethodGet)
 	r.Handle("/{id}/rooms", middlewares.RecoveryMiddleware(middlewares.AuthMiddleware(http.HandlerFunc(chatHandlers.GetUserRooms)))).Methods(http.MethodGet)
 	r.Handle("/", middlewares.RecoveryMiddleware(middlewares.AuthMiddleware(http.HandlerFunc(chatHandlers.MainPageHandler)))).Methods(http.MethodGet)
+	r.Handle("/ws/{id}", middlewares.RecoveryMiddleware(middlewares.AuthMiddleware(http.HandlerFunc(chatHandlers.ChatHandler)))).Methods(http.MethodGet)
 
 	srv := &http.Server{
 		Addr:         ":8080",
@@ -69,8 +74,9 @@ func main() {
 
 	if chatHandlers != nil && chatHandlers.RabbitManager != nil {
 		chatHandlers.RabbitManager.Stop()
-		database.ClosePool()
 	}
+	
+	database.ClosePool()
 
 	log.Println("Server stopped")
 }

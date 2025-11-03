@@ -232,7 +232,6 @@ func (ah *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
     responses.SendJSONResponse(w, 200, map[string]any{
         "Message": "Успешный вход в систему",
         "AccessToken": loginData.AccessTokenString,
-        "RefreshToken": loginData.RefreshTokenString,
     })
 }
 

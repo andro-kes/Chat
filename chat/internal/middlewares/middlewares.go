@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/andro-kes/Chat/chat/grpc"
 	"github.com/andro-kes/Chat/chat/logger"
@@ -17,16 +16,30 @@ const UserIDKey UserId = "user_id"
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Попробовать получить токен из заголовка Authorization
 		token := r.Header.Get("Authorization")
+		if token != "" {
+			// Удалить префикс "Bearer " если есть
+			if len(token) > 7 && token[:7] == "Bearer " {
+				token = token[7:]
+			}
+		} else {
+			// Попробовать из URL-параметра
+			token = r.URL.Query().Get("token")
+			if token == "" {
+				// Попробовать из куки
+				cookie, err := r.Cookie("access_token")
+				if err == nil {
+					token = cookie.Value
+				}
+			}
+		}
+
 		if token == "" {
 			logger.Log.Warn("Отсутствует токен авторизации")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-
-		// Установим deadline на запрос к auth
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
 
 		userId, err := grpc.Client(token)
 		if err != nil {
@@ -35,7 +48,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx = context.WithValue(ctx, UserIDKey, userId)
+		ctx := context.WithValue(r.Context(), UserIDKey, userId)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
